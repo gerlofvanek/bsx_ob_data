@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BasicSwapDEX Orderbook</title>
+  <title>(BSX) BasicSwap - Network Order Book</title>
+  <link rel="icon" sizes="32x32" type="image/png" href="images/coins/Bitcoin-20.png">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -11,128 +12,186 @@
       theme: {
         extend: {
           colors: {
-            coolGray: { 100: '#f3f4f6', 200: '#e5e7eb' },
+            coolGray: { 100: '#eef0f3', 200: '#d5dae1' },
             gray: {
-              400: '#4a5568', 500: '#2d3748', 600: '#1a202c', 700: '#171923', 800: '#111827'
-            }
-          },
-          fontFamily: {
-            mono: ['"SF Mono"', '"Fira Code"', '"Cascadia Code"', 'monospace'],
+              300: '#d1d5db',
+              400: '#3d485b',
+              500: '#232b3a',
+              600: '#1e2431',
+              700: '#1a202c',
+            },
           }
         }
       }
     }
   </script>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-    .monospace { font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace; font-size: 0.85em; }
-    .coin-icon {
-      width: 28px; height: 28px; border-radius: 50%;
-      display: inline-flex; align-items: center; justify-content: center;
-      font-size: 11px; font-weight: 700; color: #fff; flex-shrink: 0;
-    }
+    .monospace { font-family: monospace; }
+    .bold { font-weight: bold; }
+    .semibold { font-weight: 600; }
     .filter-btn { transition: all 0.15s ease; cursor: pointer; }
     .filter-btn:hover { border-color: #6b7280; }
-    .filter-btn.active { background: #2d3748; border-color: #4d84f0; color: #fff !important; }
-    .dark .filter-btn.active { background: rgba(77,132,240,0.15); border-color: #4d84f0; }
-    @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-    .live-dot { animation: pulse-dot 2s ease-in-out infinite; }
+    .filter-btn.active { background: rgba(59,130,246,0.15); border-color: #3b82f6; color: #93c5fd !important; }
   </style>
 </head>
-<body class="bg-gray-100 dark:bg-gray-700 min-h-screen">
+<body class="bg-coolGray-100 dark:bg-gray-700 min-h-screen">
 
 <!-- Header -->
-<header class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-600">
-  <div class="container mx-auto px-4 py-4 flex items-center justify-between">
-    <div class="flex items-center gap-3">
-      <div class="text-2xl font-bold text-gray-800 dark:text-white tracking-tight">
-        <span class="text-blue-500">BasicSwapDEX</span> Orderbook
-      </div>
-      <span class="live-dot inline-block w-2 h-2 rounded-full bg-green-400 mt-1"></span>
+<nav class="bg-gray-700">
+  <div class="max-w-[1920px] mx-auto px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-6">
+      <a href="/" class="flex-shrink-0">
+        <img class="h-10" src="images/logos/basicswap-logo.svg" alt="BasicSwap">
+      </a>
+      <span class="text-white font-semibold text-lg flex items-center gap-2">
+        Network Order Book
+        <span id="offers-count" class="inline-flex justify-center items-center text-xs font-semibold px-2.5 py-1 text-white bg-blue-500 rounded-full">0</span>
+      </span>
     </div>
-    <div class="flex items-center gap-4 text-sm">
-      <span id="status" class="text-xs text-gray-400 dark:text-gray-300"></span>
-      <button onclick="toggleTheme()" class="p-2 rounded-lg bg-coolGray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-500 transition">
-        <svg class="w-5 h-5 hidden dark:block" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"/></svg>
-        <svg class="w-5 h-5 block dark:hidden" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/></svg>
+    <div class="flex items-center gap-4">
+      <span id="status" class="text-sm text-gray-300"></span>
+      <button onclick="toggleTheme()" class="p-2 rounded-lg text-gray-300 hover:bg-gray-700 transition">
+        <svg id="sun-icon" class="w-5 h-5 hidden dark:block" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"/></svg>
+        <svg id="moon-icon" class="w-5 h-5 block dark:hidden" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/></svg>
       </button>
     </div>
   </div>
-</header>
+</nav>
 
-<!-- Filters + Stats -->
-<section class="container mx-auto px-4 py-5">
+<!-- Filters + Info Bar -->
+<div class="max-w-[1920px] mx-auto px-4 pt-5 pb-3">
   <div class="flex flex-wrap items-center gap-3 mb-3">
-    <span class="text-sm font-semibold text-gray-500 dark:text-gray-400">Filter:</span>
-    <button class="filter-btn active px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 dark:border-gray-500 text-gray-600 dark:text-gray-300" data-coin="ALL" onclick="setFilter('ALL', this)">All Coins</button>
+    <button class="filter-btn active px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-600 text-gray-300" data-coin="ALL" onclick="setFilter('ALL', this)">All Coins</button>
     <div id="coin-filters" class="flex flex-wrap gap-2"></div>
   </div>
-  <div class="flex flex-wrap gap-6 text-xs text-gray-400 dark:text-gray-300">
-    <span>Offers: <strong id="stat-offers" class="text-gray-700 dark:text-gray-100">—</strong></span>
-    <span>Pairs: <strong id="stat-pairs" class="text-gray-700 dark:text-gray-100">—</strong></span>
-    <span>Updated: <strong id="stat-updated" class="text-gray-700 dark:text-gray-100">—</strong></span>
+  <div class="flex flex-wrap gap-6 text-sm text-gray-600 dark:text-gray-300">
+    <span>Last refreshed: <strong id="stat-updated" class="text-gray-800 dark:text-gray-100">Never</strong></span>
+    <span>Offers: <strong id="stat-offers" class="text-gray-800 dark:text-gray-100">—</strong></span>
+    <span>Pairs: <strong id="stat-pairs" class="text-gray-800 dark:text-gray-100">—</strong></span>
   </div>
-</section>
+</div>
 
 <!-- Table -->
-<section class="container mx-auto px-4 pb-8">
-  <div class="bg-coolGray-100 dark:bg-gray-500 rounded-xl overflow-hidden">
-    <div class="overflow-x-auto">
-      <table class="w-full">
-        <thead>
-          <tr class="bg-gray-50 dark:bg-gray-600 border-b border-gray-200 dark:border-gray-500">
-            <th class="py-3 pl-4 pr-2 text-left text-xs font-bold uppercase text-gray-500 dark:text-gray-300 cursor-pointer select-none" onclick="sortBy('timestamp')">Time <span id="sort-timestamp" class="sort-icon">↓</span></th>
-            <th class="py-3 px-2 text-center text-xs font-bold uppercase text-gray-500 dark:text-gray-300">Swap</th>
-            <th class="py-3 px-2 text-right text-xs font-bold uppercase text-gray-500 dark:text-gray-300 cursor-pointer select-none" onclick="sortBy('amount_from')">You Send <span id="sort-amount_from" class="sort-icon"></span></th>
-            <th class="py-3 px-2 text-right text-xs font-bold uppercase text-gray-500 dark:text-gray-300 cursor-pointer select-none" onclick="sortBy('amount_to')">You Get <span id="sort-amount_to" class="sort-icon"></span></th>
-            <th class="py-3 px-2 text-right text-xs font-bold uppercase text-gray-500 dark:text-gray-300 cursor-pointer select-none" onclick="sortBy('rate')">Rate <span id="sort-rate" class="sort-icon"></span></th>
-            <th class="py-3 pl-2 pr-4 text-right text-xs font-bold uppercase text-gray-500 dark:text-gray-300">Swap Type</th>
-          </tr>
-        </thead>
-        <tbody id="offers-body">
-          <tr><td colspan="6" class="py-16 text-center text-gray-400 dark:text-gray-300">
-            <div class="flex flex-col items-center gap-3">
-              <div class="w-16 h-1 bg-blue-500 rounded-full animate-pulse"></div>
-              <span class="text-sm">Loading orderbook...</span>
+<section>
+  <div class="lg:container mx-auto lg:px-0 px-6">
+    <div class="pt-0 pb-6 bg-coolGray-100 dark:bg-gray-500 rounded-xl">
+      <div class="px-0">
+        <div class="w-auto mt-6 overflow-auto lg:overflow-hidden">
+          <table class="w-full min-w-max">
+            <thead class="uppercase">
+              <tr>
+                <th class="p-0" onclick="sortBy('timestamp')">
+                  <div class="py-3 pl-4 justify-center rounded-tl-xl bg-coolGray-200 dark:bg-gray-600 cursor-pointer">
+                    <span class="text-sm mr-1 text-gray-600 dark:text-gray-300 font-semibold">Time</span>
+                    <span class="sort-icon ml-1 text-gray-600 dark:text-gray-400" id="sort-timestamp">↓</span>
+                  </div>
+                </th>
+                <th class="p-0" onclick="sortBy('amount_to')">
+                  <div class="py-3 px-4 bg-coolGray-200 dark:bg-gray-600 text-left cursor-pointer">
+                    <span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Max Send</span>
+                    <span class="sort-icon ml-1 text-gray-600 dark:text-gray-400" id="sort-amount_to"></span>
+                  </div>
+                </th>
+                <th class="p-0">
+                  <div class="py-3 px-4 bg-coolGray-200 dark:bg-gray-600 text-center">
+                    <span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Swap</span>
+                  </div>
+                </th>
+                <th class="p-0" onclick="sortBy('amount_from')">
+                  <div class="py-3 px-4 bg-coolGray-200 dark:bg-gray-600 text-right cursor-pointer">
+                    <span class="text-sm text-gray-600 dark:text-gray-300 font-semibold pr-2">Max Recv</span>
+                    <span class="sort-icon ml-1 text-gray-600 dark:text-gray-400" id="sort-amount_from"></span>
+                  </div>
+                </th>
+                <th class="p-0" onclick="sortBy('rate')">
+                  <div class="py-3 px-4 bg-coolGray-200 dark:bg-gray-600 text-right flex items-center justify-end cursor-pointer">
+                    <span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Rate</span>
+                    <span class="sort-icon ml-1 text-gray-600 dark:text-gray-400" id="sort-rate"></span>
+                  </div>
+                </th>
+                <th class="p-0" onclick="sortBy('market_pct')">
+                  <div class="py-3 bg-coolGray-200 dark:bg-gray-600 text-center flex items-center justify-center cursor-pointer">
+                    <span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Market +/-</span>
+                    <span class="sort-icon ml-1 text-gray-600 dark:text-gray-400" id="sort-market_pct"></span>
+                  </div>
+                </th>
+                <th class="p-0">
+                  <div class="py-3 px-4 bg-coolGray-200 dark:bg-gray-600 rounded-tr-xl">
+                    <span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Trade</span>
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            <tbody id="offers-body">
+              <tr><td colspan="7" class="py-16 text-center text-gray-400 dark:text-gray-300 text-sm">Loading orderbook...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="rounded-b-md">
+        <div class="w-full">
+          <div class="flex flex-wrap justify-between items-center pl-6 pt-6 pr-6 border-t border-gray-100 dark:border-gray-400">
+            <div class="flex items-center">
+              <div class="flex items-center mr-4">
+                <span id="status-dot" class="w-2.5 h-2.5 rounded-full bg-green-500 mr-2"></span>
+                <span id="status-text" class="text-sm text-gray-500 dark:text-gray-300">Connected</span>
+              </div>
+              <p class="text-sm font-heading dark:text-gray-400 mr-4">
+                Last refreshed: <span id="lastRefreshTime">Never</span>
+              </p>
+              <p class="text-sm font-heading dark:text-gray-400 mr-4">
+                <span>Network Listings: </span>
+                <span id="newEntriesCount">0</span>
+              </p>
             </div>
-          </td></tr>
-        </tbody>
-      </table>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </section>
 
 <!-- Footer -->
-<footer class="container mx-auto px-4 pb-8 text-center">
-  <p class="text-xs text-gray-400 dark:text-gray-300">
+<footer class="lg:container mx-auto px-6 pb-8 pt-4 text-center">
+  <p class="text-xs text-gray-500 dark:text-gray-400">
     Powered by <a href="https://basicswapdex.com" class="text-blue-400 hover:underline">BasicSwapDEX</a>
   </p>
 </footer>
 
 <script>
-const COIN_COLORS = {
-  BTC:'#f7931a', XMR:'#ff6600', LTC:'#bfbbbb', PART:'#02e8b0', BCH:'#8dc351',
-  FIRO:'#9b1c2e', DASH:'#008ce7', PIVX:'#5e4778', WOW:'#ff69b4', DOGE:'#c3a634',
-  DCR:'#2ed6a1', NAV:'#7d59b5', NMC:'#186c9d',
+// Coin name -> CoinGecko ID mapping (same as BSX)
+const COIN_GECKO_IDS = {
+  BTC:'bitcoin', XMR:'monero', LTC:'litecoin', PART:'particl', BCH:'bitcoin-cash',
+  FIRO:'zcoin', DASH:'dash', PIVX:'pivx', WOW:'wownero', DOGE:'dogecoin',
+  DCR:'decred', NAV:'nav-coin', NMC:'namecoin',
 };
 const COIN_NAMES = {
   BTC:'Bitcoin', XMR:'Monero', LTC:'Litecoin', PART:'Particl', BCH:'Bitcoin Cash',
   FIRO:'Firo', DASH:'Dash', PIVX:'PIVX', WOW:'Wownero', DOGE:'Dogecoin',
   DCR:'Decred', NAV:'Navcoin', NMC:'Namecoin',
 };
+// Coin image filenames (matches BSX /static/images/coins/)
+const COIN_IMG = {
+  BTC:'Bitcoin', XMR:'Monero', LTC:'Litecoin', PART:'Particl', BCH:'Bitcoin-Cash',
+  FIRO:'Firo', DASH:'Dash', PIVX:'PIVX', WOW:'Wownero', DOGE:'Dogecoin',
+  DCR:'Decred', NAV:'Navcoin', NMC:'Namecoin', PART_BLIND:'Particl-Blind',
+  PART_ANON:'Particl-Anon', LTC_MWEB:'Litecoin',
+};
 const SWAP_TYPES = {
   1:'Secret Hash', 2:'Seller First', 3:'Seller First 2msg',
-  4:'Buyer First 2msg', 5:'Adaptor Sig', 6:'Adaptor Sig'
+  4:'Buyer First 2msg', 5:'Adaptor Sig', 6:'Adaptor Sig',
 };
 
 let allOffers = [];
+let latestPrices = {};
 let currentFilter = 'ALL';
 let currentSort = 'timestamp';
 let sortAsc = false;
+let lastUpdated = '';
 
-function coinIcon(ticker) {
-  const c = COIN_COLORS[ticker] || '#6b7280';
-  return `<span class="coin-icon" style="background:${c}">${ticker.slice(0,1)}</span>`;
+function coinImg(ticker, size=20) {
+  const name = COIN_IMG[ticker] || ticker;
+  return `<img src="images/coins/${name}-20.png" alt="${ticker}" class="rounded-full" width="${size}" height="${size}" onerror="this.style.display='none'">`;
 }
 
 function timeAgo(ts) {
@@ -143,9 +202,42 @@ function timeAgo(ts) {
   return `${Math.floor(s/86400)}d ago`;
 }
 
-function formatPostedTime(ts) {
+function formatTime(ts) {
   const d = new Date(ts * 1000);
-  return d.toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+  const day = d.toLocaleDateString(undefined, { month:'short', day:'numeric' });
+  const time = d.toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' });
+  return { day, time };
+}
+
+function formatUSD(val) {
+  if (!val || val === 0) return '';
+  if (val >= 1) return '$' + val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return '$' + val.toFixed(4);
+}
+
+function formatDuration(seconds) {
+  if (seconds <= 0) return 'Expired';
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return d + 'd ' + h + 'h';
+  if (h > 0) return h + 'h ' + m + 'm';
+  return m + 'm';
+}
+
+function calcMarketPct(offer) {
+  // Same logic as BSX: calculateProfitLoss (non-own-offer path)
+  const fromPriceUSD = latestPrices[COIN_GECKO_IDS[offer.coin_from]];
+  const toPriceUSD = latestPrices[COIN_GECKO_IDS[offer.coin_to]];
+  if (!fromPriceUSD || !toPriceUSD) return null;
+  const fromAmount = parseFloat(offer.amount_from_str);
+  const toAmount = parseFloat(offer.amount_to_str);
+  if (!fromAmount || !toAmount) return null;
+  const fromValueUSD = fromAmount * fromPriceUSD;
+  const toValueUSD = toAmount * toPriceUSD;
+  if (!fromValueUSD || !toValueUSD) return null;
+  // Non-own offer: negative means taker pays more than market
+  return (-((toValueUSD / fromValueUSD) - 1)) * 100;
 }
 
 function renderOffers() {
@@ -153,66 +245,132 @@ function renderOffers() {
   if (currentFilter !== 'ALL') {
     offers = offers.filter(o => o.coin_from === currentFilter || o.coin_to === currentFilter);
   }
+  // Add market_pct for sorting
+  offers.forEach(o => { o.market_pct = calcMarketPct(o) || 0; });
   offers.sort((a, b) => sortAsc ? a[currentSort] - b[currentSort] : b[currentSort] - a[currentSort]);
 
   const tbody = document.getElementById('offers-body');
   if (!offers.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="py-16 text-center text-gray-400 dark:text-gray-300 text-sm">No offers match this filter</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="py-16 text-center text-gray-400 dark:text-gray-300 text-sm">No offers found</td></tr>`;
     return;
   }
   tbody.innerHTML = offers.map(o => {
-    const rate = o.rate;
+    const fromSym = o.coin_from, toSym = o.coin_to;
+    const fromDisplay = COIN_NAMES[fromSym] || fromSym;
+    const toDisplay = COIN_NAMES[toSym] || toSym;
+    const fromImgFile = (COIN_IMG[fromSym] || fromSym).replace(' ','-') + '.png';
+    const toImgFile = (COIN_IMG[toSym] || toSym).replace(' ','-') + '.png';
+    const fromSymbol = fromSym, toSymbol = toSym;
+    const amtFrom = parseFloat(o.amount_from_str) || 0;
+    const amtTo = parseFloat(o.amount_to_str) || 0;
+    const rate = amtFrom ? (amtTo / amtFrom) : 0;
     const inverseRate = rate ? (1 / rate) : 0;
-    const fromSym = o.coin_from;
-    const toSym = o.coin_to;
-    const swapLabel = SWAP_TYPES[o.swap_type] || 'Unknown';
+    const swapLabel = SWAP_TYPES[o.swap_type] || 'Swap';
+    // USD rate: rate * toPriceUSD (same as BSX createRateColumn)
+    const pTo = latestPrices[COIN_GECKO_IDS[toSym]];
+    const rateInUSD = pTo && rate ? rate * pTo : null;
+    // Market percentage
+    const mktPct = calcMarketPct(o);
+    let mktPctStr = '', mktPctClass = 'text-gray-400';
+    if (mktPct !== null) {
+      const sign = mktPct >= 0 ? '+' : '';
+      mktPctStr = sign + mktPct.toFixed(2) + '%';
+      mktPctClass = mktPct > 0 ? 'text-green-400' : mktPct < 0 ? 'text-red-400' : 'text-gray-400';
+    }
+    // Time
+    const posted = new Date(o.timestamp * 1000);
+    const postedStr = posted.toLocaleDateString(undefined, {month:'short',day:'numeric'}) + ' ' + posted.toLocaleTimeString(undefined, {hour:'2-digit',minute:'2-digit'});
+    const expiresIn = o.expire_at ? timeAgo(Math.floor(Date.now()/1000) - (o.expire_at - Math.floor(Date.now()/1000))) : '';
+    const now = Math.floor(Date.now()/1000);
+    const timeLeft = (o.expire_at || 0) - now;
+    let strokeColor = '#10B981';
+    if (timeLeft <= 300) strokeColor = '#9CA3AF';
+    else if (timeLeft <= 1800) strokeColor = '#3B82F6';
+
     return `
-    <tr class="opacity-100 text-gray-500 dark:text-gray-100 hover:bg-coolGray-200 dark:hover:bg-gray-600 border-b border-gray-200 dark:border-gray-600">
-      <td class="py-3 pl-4 pr-2 text-xs whitespace-nowrap">
+    <tr class="relative opacity-100 text-gray-500 dark:text-gray-100 hover:bg-coolGray-200 dark:hover:bg-gray-600">
+      <!-- Time -->
+      <td class="py-3 pl-1 pr-2 text-xs whitespace-nowrap">
         <div class="flex items-center">
-          <svg class="w-5 h-5 rounded-full mr-3 text-green-500 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-            <g stroke-linecap="round" stroke-width="2" fill="none" stroke="#10B981" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="11"></circle>
-              <polyline points="12,6 12,12 18,12" stroke="#10B981"></polyline>
-            </g>
-          </svg>
+          <div class="relative">
+            <svg class="w-5 h-5 rounded-full mr-4 cursor-pointer" xmlns="http://www.w3.org/2000/svg" height="20" width="20" viewBox="0 0 24 24">
+              <g stroke-linecap="round" stroke-width="2" fill="none" stroke="${strokeColor}" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="11"></circle>
+                <polyline points="12,6 12,12 18,12" stroke="${strokeColor}"></polyline>
+              </g>
+            </svg>
+          </div>
           <div class="flex flex-col">
-            <span class="font-bold">${formatPostedTime(o.timestamp)}</span>
-            <span class="text-gray-400 dark:text-gray-300">${timeAgo(o.timestamp)}</span>
+            <div class="text-xs whitespace-nowrap dark:text-gray-200"><span class="bold">Posted:</span> ${postedStr}</div>
+            <div class="text-xs whitespace-nowrap dark:text-gray-300"><span class="bold">Expires in:</span> ${timeLeft > 0 ? formatDuration(timeLeft) : 'Expired'}</div>
           </div>
         </div>
       </td>
-      <td class="py-0 px-2 text-center">
-        <div class="flex items-center justify-center gap-1">
-          <span class="inline-flex items-center justify-center w-10 h-10 rounded">
-            ${coinIcon(toSym)}
+      <!-- Max Send (Taker sends coin_to) -->
+      <td class="py-0">
+        <div class="py-3 px-4 text-left">
+          <div class="items-center monospace">
+            <div class="pr-2">
+              <div class="text-sm font-semibold dark:text-white">${amtTo.toFixed(4)}</div>
+              <div class="text-sm text-gray-500 dark:text-gray-400">${toDisplay}</div>
+            </div>
+          </div>
+        </div>
+      </td>
+      <!-- Swap -->
+      <td class="py-0 px-0 text-right text-sm">
+        <div class="flex items-center justify-evenly monospace">
+          <span class="inline-flex mr-3 ml-3 align-middle items-center justify-center w-18 h-20 rounded">
+            <img class="h-12" src="images/coins/${toImgFile}" alt="${toDisplay}" onerror="this.style.display='none'">
           </span>
-          <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
-          <span class="inline-flex items-center justify-center w-10 h-10 rounded">
-            ${coinIcon(fromSym)}
+          <svg aria-hidden="true" class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+            <path fill-rule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+          </svg>
+          <span class="inline-flex ml-3 mr-3 align-middle items-center justify-center w-18 h-20 rounded">
+            <img class="h-12" src="images/coins/${fromImgFile}" alt="${fromDisplay}" onerror="this.style.display='none'">
           </span>
         </div>
       </td>
-      <td class="py-3 px-2 text-right">
-        <div class="pr-2">
-          <div class="text-sm font-semibold monospace">${o.amount_from_str}</div>
-          <div class="text-xs text-gray-500 dark:text-gray-400">${COIN_NAMES[fromSym] || fromSym}</div>
+      <!-- Max Recv (Taker receives coin_from) -->
+      <td class="p-0">
+        <div class="py-3 px-4 text-right">
+          <div class="items-center monospace">
+            <div class="pr-2">
+              <div class="text-sm font-semibold dark:text-white">${amtFrom.toFixed(4)}</div>
+              <div class="text-sm text-gray-500 dark:text-gray-400">${fromDisplay}</div>
+            </div>
+          </div>
         </div>
       </td>
-      <td class="py-3 px-2 text-right">
-        <div class="pr-2">
-          <div class="text-sm font-semibold monospace">${o.amount_to_str}</div>
-          <div class="text-xs text-gray-500 dark:text-gray-400">${COIN_NAMES[toSym] || toSym}</div>
+      <!-- Rate -->
+      <td class="py-3 semibold monospace text-xs text-right items-center">
+        <div class="relative">
+          <div class="flex flex-col items-end pr-3">
+            <span class="text-sm bold text-gray-700 dark:text-white">
+              ${rateInUSD !== null ? '$' + rateInUSD.toFixed(2) + ' USD' : 'N/A'}
+            </span>
+            <span class="bold text-gray-700 dark:text-white">
+              ${rate.toFixed(8)} ${toSymbol}/${fromSymbol}
+            </span>
+            <span class="semibold text-gray-400 dark:text-gray-300">
+              ${inverseRate.toFixed(8)} ${fromSymbol}/${toSymbol}
+            </span>
+          </div>
         </div>
       </td>
-      <td class="py-3 px-2 text-right monospace">
-        <div class="flex flex-col items-end pr-2">
-          <span class="text-sm font-bold text-gray-700 dark:text-white">${rate.toFixed(8)} ${toSym}/${fromSym}</span>
-          <span class="text-xs text-gray-400 dark:text-gray-300">${inverseRate.toFixed(8)} ${fromSym}/${toSym}</span>
+      <!-- Market +/- -->
+      <td class="py-3 px-2 bold text-sm text-center monospace items-center">
+        <div class="relative">
+          <div class="profittype">
+            <span class="text-lg font-bold ${mktPctClass}">${mktPctStr || '—'}</span>
+          </div>
         </div>
       </td>
-      <td class="py-3 pl-2 pr-4 text-right text-xs">
-        <span class="whitespace-nowrap font-semibold text-gray-500 dark:text-gray-300">${swapLabel}</span>
+      <!-- Trade -->
+      <td class="py-6 px-2 text-center">
+        <div class="flex justify-center items-center h-full">
+          <span class="inline-block w-20 py-1 px-2 font-medium text-center text-sm rounded-md bg-blue-500 text-white">${swapLabel}</span>
+        </div>
       </td>
     </tr>`;
   }).join('');
@@ -222,8 +380,8 @@ function buildFilters() {
   const coins = [...new Set(allOffers.flatMap(o => [o.coin_from, o.coin_to]))].sort();
   const container = document.getElementById('coin-filters');
   container.innerHTML = coins.map(c =>
-    `<button class="filter-btn px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 dark:border-gray-500 text-gray-600 dark:text-gray-300 flex items-center gap-1.5" data-coin="${c}" onclick="setFilter('${c}', this)">
-      ${coinIcon(c)} ${c}
+    `<button class="filter-btn px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-600 text-gray-300 flex items-center gap-1.5" data-coin="${c}" onclick="setFilter('${c}', this)">
+      ${coinImg(c, 20)} ${c}
     </button>`
   ).join('');
 }
@@ -243,11 +401,31 @@ function sortBy(field) {
   renderOffers();
 }
 
-function updateStats() {
+function updateStats(data) {
   document.getElementById('stat-offers').textContent = allOffers.length;
+  document.getElementById('offers-count').textContent = allOffers.length;
   const pairs = new Set(allOffers.map(o => `${o.coin_from}/${o.coin_to}`));
   document.getElementById('stat-pairs').textContent = pairs.size;
-  document.getElementById('stat-updated').textContent = new Date().toLocaleTimeString();
+  const timeStr = (data && data.updated_at) ? data.updated_at : new Date().toLocaleString();
+  document.getElementById('stat-updated').textContent = timeStr;
+  // Update BSX-style footer
+  const lrt = document.getElementById('lastRefreshTime');
+  if (lrt) lrt.textContent = timeStr;
+  const nec = document.getElementById('newEntriesCount');
+  if (nec) nec.textContent = allOffers.length;
+}
+
+async function fetchPrices() {
+  try {
+    const ids = [...new Set(Object.values(COIN_GECKO_IDS))].join(',');
+    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=' + ids + '&vs_currencies=usd');
+    const data = await r.json();
+    for (const [id, val] of Object.entries(data)) {
+      latestPrices[id] = val.usd;
+    }
+  } catch (e) {
+    console.warn('Failed to fetch prices:', e);
+  }
 }
 
 async function fetchOrderbook() {
@@ -255,10 +433,11 @@ async function fetchOrderbook() {
     const r = await fetch('orderbook.json?' + Date.now());
     const data = await r.json();
     allOffers = data.offers || [];
+    lastUpdated = data.updated_at || '';
     buildFilters();
     renderOffers();
-    updateStats();
-    document.getElementById('status').textContent = `${allOffers.length} offers`;
+    updateStats(data);
+    document.getElementById('status').textContent = allOffers.length + ' offers';
   } catch (e) {
     document.getElementById('status').textContent = 'Error loading data';
     console.error(e);
@@ -270,9 +449,14 @@ function toggleTheme() {
   localStorage.setItem('bsx-theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
 }
 
+// Init
 if (localStorage.getItem('bsx-theme') === 'light') document.documentElement.classList.remove('dark');
-fetchOrderbook();
+(async () => {
+  await fetchPrices();
+  await fetchOrderbook();
+})();
 setInterval(fetchOrderbook, 60000);
+setInterval(fetchPrices, 300000);
 </script>
 </body>
 </html>

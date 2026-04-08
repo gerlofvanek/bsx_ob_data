@@ -467,8 +467,10 @@ class BSXOfferListener(P2PInterface):
                  f"{self.stats['msgs_received']} total")
 
     def get_orderbook_json(self) -> str:
+        now = int(time.time())
         return json.dumps({
-            "timestamp": int(time.time()),
+            "timestamp": now,
+            "updated_at": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(now)),
             "num_offers": len(self.offers),
             "stats": self.stats,
             "offers": list(self.offers.values()),
