@@ -3,460 +3,604 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>(BSX) BasicSwap - Network Order Book</title>
-  <link rel="icon" sizes="32x32" type="image/png" href="images/coins/Bitcoin-20.png">
+  <title>BasicSwap DEX — Markets</title>
+  <link rel="icon" type="image/svg+xml" href="images/logos/basicswap-logo.svg">
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            coolGray: { 100: '#eef0f3', 200: '#d5dae1' },
-            gray: {
-              300: '#d1d5db',
-              400: '#3d485b',
-              500: '#232b3a',
-              600: '#1e2431',
-              700: '#1a202c',
-            },
-          }
-        }
-      }
+      theme: { extend: { colors: {
+        coolGray: { 100: '#eef0f3', 200: '#d5dae1' },
+        bsx: { 400: '#3d485b', 500: '#232b3a', 600: '#1e2431', 700: '#1a202c' },
+      }}}
     }
   </script>
   <style>
-    .monospace { font-family: monospace; }
-    .bold { font-weight: bold; }
-    .semibold { font-weight: 600; }
-    .filter-btn { transition: all 0.15s ease; cursor: pointer; }
-    .filter-btn:hover { border-color: #6b7280; }
-    .filter-btn.active { background: rgba(59,130,246,0.15); border-color: #3b82f6; color: #93c5fd !important; }
+    .monospace{font-family:'SF Mono','Fira Code','Cascadia Code',ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+    .bold{font-weight:700}.semibold{font-weight:600}
+    .filter-btn{transition:all .15s ease;cursor:pointer;-webkit-tap-highlight-color:transparent}
+    .filter-btn:hover{border-color:#6b7280}
+    .filter-btn.active{background:rgba(59,130,246,.15);border-color:#3b82f6;color:#93c5fd!important}
+    .pulse-dot{animation:pulse 2s infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+    .badge-new{background:#10b981;color:#fff;font-size:9px;padding:1px 5px;border-radius:4px;font-weight:700;margin-left:4px;vertical-align:middle}
+    .best-deal{background:rgba(16,185,129,.06)!important;border-left:3px solid #10b981!important}
+    .dark .best-deal{background:rgba(16,185,129,.08)!important}
+    .heatmap-cell{border-radius:6px;padding:6px 8px;text-align:center;font-size:11px;min-width:48px;cursor:pointer;transition:all .15s}
+    .heatmap-cell:hover{transform:scale(1.08);z-index:1;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+    .spread-fiat{display:inline-flex;align-items:center;padding:2px 8px;border-radius:4px;background:rgba(59,130,246,.08);font-size:11px}
+    .dark .spread-fiat{background:rgba(59,130,246,.12)}
+    .heatmap-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
+    /* Filter buttons - light mode fix */
+    .filter-btn{color:#374151;border-color:#d1d5db}
+    .dark .filter-btn{color:#d1d5db;border-color:#3d485b}
+    .filter-btn.active{color:#93c5fd!important;border-color:#3b82f6!important;background:rgba(59,130,246,.15)!important}
+    /* Mobile */
+    @media(max-width:768px){
+      .desktop-only{display:none!important}
+      .mobile-stack{flex-direction:column!important}
+      .mobile-full{width:100%!important;min-width:0!important}
+      .mobile-hide{display:none!important}
+      #orders-table{min-width:0!important}
+      #orders-table thead{display:none!important}
+      #orders-table tbody tr{display:block!important;padding:0!important;border:none!important}
+      #orders-table tbody td.desk-cell{display:none!important}
+      #orders-table tbody td.mob-card-wrap{display:block!important}
+      .heatmap-cell{min-width:36px;padding:4px;font-size:9px}
+    }
+    @media(min-width:769px){
+      .mobile-only{display:none!important}
+      .mob-card-wrap{display:none!important}
+    }
+    .-translate-y-1\/2{-webkit-transform:translateY(-50%);transform:translateY(-50%)}
   </style>
 </head>
-<body class="bg-coolGray-100 dark:bg-gray-700 min-h-screen">
+<body class="bg-coolGray-100 dark:bg-bsx-700 min-h-screen text-gray-700 dark:text-gray-200">
 
-<!-- Header -->
-<nav class="bg-gray-700">
-  <div class="max-w-[1920px] mx-auto px-4 py-3 flex items-center justify-between">
-    <div class="flex items-center gap-6">
-      <a href="/" class="flex-shrink-0">
-        <img class="h-10" src="images/logos/basicswap-logo.svg" alt="BasicSwap">
-      </a>
-      <span class="text-white font-semibold text-lg flex items-center gap-2">
-        Network Order Book
-        <span id="offers-count" class="inline-flex justify-center items-center text-xs font-semibold px-2.5 py-1 text-white bg-blue-500 rounded-full">0</span>
+<nav class="bg-bsx-700 border-b border-bsx-400">
+  <div class="w-full px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <a href="/" class="flex-shrink-0"><img class="h-10" src="images/logos/basicswap-logo.svg" alt="BasicSwap"></a>
+      <span class="text-white font-semibold text-lg flex items-center gap-2">Markets
+        <span id="offers-count" class="text-xs font-semibold px-2 py-0.5 text-white bg-blue-500 rounded-full">0</span>
+        <span id="header-volume" class="text-xs font-normal text-gray-400 desktop-only">Est. Vol: —</span>
       </span>
     </div>
-    <div class="flex items-center gap-4">
-      <span id="status" class="text-sm text-gray-300"></span>
-      <button onclick="toggleTheme()" class="p-2 rounded-lg text-gray-300 hover:bg-gray-700 transition">
-        <svg id="sun-icon" class="w-5 h-5 hidden dark:block" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"/></svg>
-        <svg id="moon-icon" class="w-5 h-5 block dark:hidden" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/></svg>
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2 text-sm">
+        <span id="refresh-dot" class="w-2 h-2 rounded-full bg-green-500 pulse-dot"></span>
+        <span class="text-gray-300 desktop-only">Updated <span id="refresh-ago">—</span></span>
+        <span id="refresh-countdown" class="text-gray-400 text-xs">(5:00)</span>
+      </div>
+      <button onclick="manualRefresh()" class="p-1.5 rounded text-gray-300 hover:text-white hover:bg-bsx-500 transition" title="Refresh now">
+        <svg id="refreshSpinner" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+      </button>
+      <button onclick="toggleTheme()" class="p-1.5 rounded text-gray-300 hover:text-white hover:bg-bsx-500 transition">
+        <svg class="w-4 h-4 hidden dark:block" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"/></svg>
+        <svg class="w-4 h-4 block dark:hidden" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/></svg>
       </button>
     </div>
   </div>
 </nav>
 
-<!-- Filters + Info Bar -->
-<div class="max-w-[1920px] mx-auto px-4 pt-5 pb-3">
-  <div class="flex flex-wrap items-center gap-3 mb-3">
-    <button class="filter-btn active px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-600 text-gray-300" data-coin="ALL" onclick="setFilter('ALL', this)">All Coins</button>
-    <div id="coin-filters" class="flex flex-wrap gap-2"></div>
+<!-- Filters -->
+<div class="w-full px-4 pt-4 pb-2">
+  <div class="flex flex-wrap items-center gap-3 mb-2">
+    <div class="relative">
+      <select id="pair-select" onchange="onPairChange(this.value)" class="bg-bsx-600 text-white text-sm rounded px-3 py-1.5 pr-8 border border-bsx-400 focus:ring-0 focus:outline-none appearance-none cursor-pointer"><option value="ALL">All Pairs</option></select>
+      <svg class="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+    </div>
+    <button class="filter-btn active px-3 py-1.5 text-xs font-semibold rounded border" data-coin="ALL" onclick="setCoinFilter('ALL',this)">All</button>
+    <div id="coin-filters" class="flex flex-wrap gap-1.5"></div>
   </div>
-  <div class="flex flex-wrap gap-6 text-sm text-gray-600 dark:text-gray-300">
-    <span>Last refreshed: <strong id="stat-updated" class="text-gray-800 dark:text-gray-100">Never</strong></span>
-    <span>Offers: <strong id="stat-offers" class="text-gray-800 dark:text-gray-100">—</strong></span>
-    <span>Pairs: <strong id="stat-pairs" class="text-gray-800 dark:text-gray-100">—</strong></span>
+  <div id="spread-bar" class="text-xs text-gray-500 dark:text-gray-300" style="display:none">
+    <div class="flex flex-wrap items-center gap-3 mb-1.5">
+      <span>Best Bid: <strong id="best-bid" class="text-green-400 monospace">—</strong></span>
+      <span>Best Ask: <strong id="best-ask" class="text-red-400 monospace">—</strong></span>
+      <span>Spread: <strong id="spread-abs" class="text-yellow-400 monospace">—</strong></span>
+      <span>Spread %: <strong id="spread-pct" class="text-yellow-400 monospace">—</strong></span>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-gray-400 dark:text-gray-500 text-xs" id="fiat-coin-label">1 BTC =</span>
+      <span class="spread-fiat">🇺🇸 <strong id="spread-usd" class="text-blue-400 monospace">—</strong></span>
+      <span class="spread-fiat">🇪🇺 <strong id="spread-eur" class="text-blue-400 monospace">—</strong></span>
+      <span class="spread-fiat">🇬🇧 <strong id="spread-gbp" class="text-blue-400 monospace">—</strong></span>
+      <span class="spread-fiat">🇿🇦 <strong id="spread-zar" class="text-blue-400 monospace">—</strong></span>
+      <span class="spread-fiat">🇨🇳 <strong id="spread-cny" class="text-blue-400 monospace">—</strong></span>
+      <span class="spread-fiat">🇯🇵 <strong id="spread-jpy" class="text-blue-400 monospace">—</strong></span>
+    </div>
   </div>
 </div>
 
-<!-- Table -->
-<section>
-  <div class="lg:container mx-auto lg:px-0 px-6">
-    <div class="pt-0 pb-6 bg-coolGray-100 dark:bg-gray-500 rounded-xl">
-      <div class="px-0">
-        <div class="w-auto mt-6 overflow-auto lg:overflow-hidden">
-          <table class="w-full min-w-max">
-            <thead class="uppercase">
-              <tr>
-                <th class="p-0" onclick="sortBy('timestamp')">
-                  <div class="py-3 pl-4 justify-center rounded-tl-xl bg-coolGray-200 dark:bg-gray-600 cursor-pointer">
-                    <span class="text-sm mr-1 text-gray-600 dark:text-gray-300 font-semibold">Time</span>
-                    <span class="sort-icon ml-1 text-gray-600 dark:text-gray-400" id="sort-timestamp">↓</span>
-                  </div>
-                </th>
-                <th class="p-0" onclick="sortBy('amount_to')">
-                  <div class="py-3 px-4 bg-coolGray-200 dark:bg-gray-600 text-left cursor-pointer">
-                    <span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Max Send</span>
-                    <span class="sort-icon ml-1 text-gray-600 dark:text-gray-400" id="sort-amount_to"></span>
-                  </div>
-                </th>
-                <th class="p-0">
-                  <div class="py-3 px-4 bg-coolGray-200 dark:bg-gray-600 text-center">
-                    <span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Swap</span>
-                  </div>
-                </th>
-                <th class="p-0" onclick="sortBy('amount_from')">
-                  <div class="py-3 px-4 bg-coolGray-200 dark:bg-gray-600 text-right cursor-pointer">
-                    <span class="text-sm text-gray-600 dark:text-gray-300 font-semibold pr-2">Max Recv</span>
-                    <span class="sort-icon ml-1 text-gray-600 dark:text-gray-400" id="sort-amount_from"></span>
-                  </div>
-                </th>
-                <th class="p-0" onclick="sortBy('rate')">
-                  <div class="py-3 px-4 bg-coolGray-200 dark:bg-gray-600 text-right flex items-center justify-end cursor-pointer">
-                    <span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Rate</span>
-                    <span class="sort-icon ml-1 text-gray-600 dark:text-gray-400" id="sort-rate"></span>
-                  </div>
-                </th>
-                <th class="p-0" onclick="sortBy('market_pct')">
-                  <div class="py-3 bg-coolGray-200 dark:bg-gray-600 text-center flex items-center justify-center cursor-pointer">
-                    <span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Market +/-</span>
-                    <span class="sort-icon ml-1 text-gray-600 dark:text-gray-400" id="sort-market_pct"></span>
-                  </div>
-                </th>
-                <th class="p-0">
-                  <div class="py-3 px-4 bg-coolGray-200 dark:bg-gray-600 rounded-tr-xl">
-                    <span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Trade</span>
-                  </div>
-                </th>
-              </tr>
-            </thead>
-            <tbody id="offers-body">
-              <tr><td colspan="7" class="py-16 text-center text-gray-400 dark:text-gray-300 text-sm">Loading orderbook...</td></tr>
-            </tbody>
-          </table>
-        </div>
+<!-- Pair Summary Ticker -->
+<div class="w-full px-4 pb-3" id="ticker-wrap">
+  <div class="flex flex-wrap gap-2" id="ticker-cards"></div>
+</div>
+
+<!-- Liquidity Heatmap -->
+<div class="w-full pb-3" id="heatmap-wrap" style="display:none">
+  <div class="bg-coolGray-100 dark:bg-bsx-500 px-4 py-3">
+    <span class="text-sm font-semibold dark:text-gray-100 mb-3 block">Liquidity Heatmap <span class="text-xs font-normal text-gray-400">(click a cell to view pair)</span></span>
+    <div class="heatmap-scroll"><div id="heatmap-grid"></div></div>
+  </div>
+</div>
+
+<!-- Charts: Price History + Depth -->
+<div class="w-full px-4 pb-3"><div class="flex mobile-stack gap-3">
+  <div class="flex-1 mobile-full bg-coolGray-100 dark:bg-bsx-500 rounded-lg p-3" id="price-chart-wrap" style="display:none">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-sm font-semibold dark:text-gray-100">Price History</span>
+      <div class="flex gap-1">
+        <button onclick="fetchPriceHistory('1')" class="ph-btn text-xs px-2 py-0.5 rounded bg-blue-500 text-white" data-d="1">1D</button>
+        <button onclick="fetchPriceHistory('7')" class="ph-btn text-xs px-2 py-0.5 rounded bg-bsx-600 text-gray-300 hover:bg-blue-500 hover:text-white" data-d="7">7D</button>
+        <button onclick="fetchPriceHistory('30')" class="ph-btn text-xs px-2 py-0.5 rounded bg-bsx-600 text-gray-300 hover:bg-blue-500 hover:text-white" data-d="30">30D</button>
       </div>
-      <div class="rounded-b-md">
-        <div class="w-full">
-          <div class="flex flex-wrap justify-between items-center pl-6 pt-6 pr-6 border-t border-gray-100 dark:border-gray-400">
-            <div class="flex items-center">
-              <div class="flex items-center mr-4">
-                <span id="status-dot" class="w-2.5 h-2.5 rounded-full bg-green-500 mr-2"></span>
-                <span id="status-text" class="text-sm text-gray-500 dark:text-gray-300">Connected</span>
-              </div>
-              <p class="text-sm font-heading dark:text-gray-400 mr-4">
-                Last refreshed: <span id="lastRefreshTime">Never</span>
-              </p>
-              <p class="text-sm font-heading dark:text-gray-400 mr-4">
-                <span>Network Listings: </span>
-                <span id="newEntriesCount">0</span>
-              </p>
-            </div>
-          </div>
-        </div>
+    </div>
+    <div style="height:200px"><canvas id="priceChart"></canvas></div>
+  </div>
+  <div class="flex-1 mobile-full bg-coolGray-100 dark:bg-bsx-500 rounded-lg p-3" id="depth-chart-wrap" style="display:none">
+    <span class="text-sm font-semibold dark:text-gray-100 mb-2 block">Depth Chart</span>
+    <div style="height:200px"><canvas id="depthChart"></canvas></div>
+  </div>
+</div></div>
+
+<!-- Histogram -->
+<div class="w-full px-4 pb-3" id="histogram-wrap" style="display:none">
+  <div class="bg-coolGray-100 dark:bg-bsx-500 rounded-lg p-3">
+    <span class="text-sm font-semibold dark:text-gray-100 mb-2 block">Order Size Distribution (USD)</span>
+    <div style="height:150px"><canvas id="histogramChart"></canvas></div>
+  </div>
+</div>
+
+<!-- Buy/Sell Book -->
+<div class="w-full px-4 pb-3" id="buysell-wrap" style="display:none">
+  <div class="flex mobile-stack gap-3">
+    <div class="flex-1 mobile-full bg-coolGray-100 dark:bg-bsx-500 rounded-lg overflow-hidden">
+      <div class="px-3 py-2 bg-green-900/30 border-b border-green-800/30 flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-green-500"></span>
+        <span class="text-sm font-semibold text-green-400">Buy Orders (Bids)</span>
+        <span id="bid-count" class="text-xs text-green-300 ml-auto">0</span>
+      </div>
+      <div class="overflow-auto" style="max-height:300px">
+        <table class="w-full text-xs monospace"><thead>
+          <tr class="text-gray-500 dark:text-gray-300 uppercase">
+            <th class="py-1.5 px-2 text-left font-semibold">Price</th>
+            <th class="py-1.5 px-2 text-right font-semibold">Amount</th>
+            <th class="py-1.5 px-2 text-right font-semibold">Total</th>
+          </tr></thead><tbody id="bids-body"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="flex-1 mobile-full bg-coolGray-100 dark:bg-bsx-500 rounded-lg overflow-hidden">
+      <div class="px-3 py-2 bg-red-900/30 border-b border-red-800/30 flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-red-500"></span>
+        <span class="text-sm font-semibold text-red-400">Sell Orders (Asks)</span>
+        <span id="ask-count" class="text-xs text-red-300 ml-auto">0</span>
+      </div>
+      <div class="overflow-auto" style="max-height:300px">
+        <table class="w-full text-xs monospace"><thead>
+          <tr class="text-gray-500 dark:text-gray-300 uppercase">
+            <th class="py-1.5 px-2 text-left font-semibold">Price</th>
+            <th class="py-1.5 px-2 text-right font-semibold">Amount</th>
+            <th class="py-1.5 px-2 text-right font-semibold">Total</th>
+          </tr></thead><tbody id="asks-body"></tbody>
+        </table>
       </div>
     </div>
   </div>
-</section>
+</div>
 
-<!-- Footer -->
-<footer class="lg:container mx-auto px-6 pb-8 pt-4 text-center">
+<!-- All Orders (full-width, no rounded corners) -->
+<div class="w-full">
+  <div class="bg-coolGray-100 dark:bg-bsx-500">
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-max" id="orders-table">
+        <thead class="uppercase"><tr>
+          <th class="p-0" onclick="sortBy('timestamp')"><div class="py-3 pl-4 bg-coolGray-200 dark:bg-bsx-600 cursor-pointer"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Time</span><span class="sort-icon ml-1 text-gray-500 dark:text-gray-400" id="sort-timestamp">↓</span></div></th>
+          <th class="p-0" onclick="sortBy('amount_to')"><div class="py-3 px-4 bg-coolGray-200 dark:bg-bsx-600 text-left cursor-pointer"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">You Send</span><span class="sort-icon ml-1 text-gray-500 dark:text-gray-400" id="sort-amount_to"></span></div></th>
+          <th class="p-0"><div class="py-3 px-4 bg-coolGray-200 dark:bg-bsx-600 text-center"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Swap</span></div></th>
+          <th class="p-0" onclick="sortBy('amount_from')"><div class="py-3 px-4 bg-coolGray-200 dark:bg-bsx-600 text-right cursor-pointer"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold pr-2">You Get</span><span class="sort-icon ml-1 text-gray-500 dark:text-gray-400" id="sort-amount_from"></span></div></th>
+          <th class="p-0" onclick="sortBy('rate')"><div class="py-3 px-4 bg-coolGray-200 dark:bg-bsx-600 text-right flex items-center justify-end cursor-pointer"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Rate</span><span class="sort-icon ml-1 text-gray-500 dark:text-gray-400" id="sort-rate"></span></div></th>
+          <th class="p-0" onclick="sortBy('market_pct')"><div class="py-3 bg-coolGray-200 dark:bg-bsx-600 text-center flex items-center justify-center cursor-pointer"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Market +/-</span><span class="sort-icon ml-1 text-gray-500 dark:text-gray-400" id="sort-market_pct"></span></div></th>
+          <th class="p-0"><div class="py-3 px-4 bg-coolGray-200 dark:bg-bsx-600"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Swap Type</span></div></th>
+        </tr></thead>
+        <tbody id="offers-body">
+          <tr><td colspan="7" class="py-16 text-center text-gray-500 dark:text-gray-300 text-sm">Loading markets...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="flex flex-wrap justify-between items-center px-4 py-3 border-t border-gray-200 dark:border-bsx-400">
+      <div class="flex flex-wrap items-center gap-4 text-sm text-gray-500 dark:text-gray-300">
+        <span>Last updated: <strong id="lastRefreshTime">Never</strong></span>
+        <span>Network Listings: <strong id="newEntriesCount">0</strong></span>
+        <span>Est. Volume: <strong id="totalVolume">—</strong></span>
+        <span>Active Pairs: <strong id="activePairs">0</strong></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer class="w-full px-4 py-6 text-center">
   <p class="text-xs text-gray-500 dark:text-gray-400">
-    Powered by <a href="https://basicswapdex.com" class="text-blue-400 hover:underline">BasicSwapDEX</a>
+    © 2026 <a href="https://basicswapdex.com" class="text-blue-400 hover:underline">BasicSwap DEX</a> — Powered by BasicSwapDEX
+  </p>
+  <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">
+    Made with <span class="text-red-400">♥</span>
   </p>
 </footer>
 
 <script>
-// Coin name -> CoinGecko ID mapping (same as BSX)
-const COIN_GECKO_IDS = {
-  BTC:'bitcoin', XMR:'monero', LTC:'litecoin', PART:'particl', BCH:'bitcoin-cash',
-  FIRO:'zcoin', DASH:'dash', PIVX:'pivx', WOW:'wownero', DOGE:'dogecoin',
-  DCR:'decred', NAV:'nav-coin', NMC:'namecoin',
-};
-const COIN_NAMES = {
-  BTC:'Bitcoin', XMR:'Monero', LTC:'Litecoin', PART:'Particl', BCH:'Bitcoin Cash',
-  FIRO:'Firo', DASH:'Dash', PIVX:'PIVX', WOW:'Wownero', DOGE:'Dogecoin',
-  DCR:'Decred', NAV:'Navcoin', NMC:'Namecoin',
-};
-// Coin image filenames (matches BSX /static/images/coins/)
-const COIN_IMG = {
-  BTC:'Bitcoin', XMR:'Monero', LTC:'Litecoin', PART:'Particl', BCH:'Bitcoin-Cash',
-  FIRO:'Firo', DASH:'Dash', PIVX:'PIVX', WOW:'Wownero', DOGE:'Dogecoin',
-  DCR:'Decred', NAV:'Navcoin', NMC:'Namecoin', PART_BLIND:'Particl-Blind',
-  PART_ANON:'Particl-Anon', LTC_MWEB:'Litecoin',
-};
-const SWAP_TYPES = {
-  1:'Secret Hash', 2:'Seller First', 3:'Seller First 2msg',
-  4:'Buyer First 2msg', 5:'Adaptor Sig', 6:'Adaptor Sig',
-};
+const COIN_GECKO_IDS={BTC:'bitcoin',XMR:'monero',LTC:'litecoin',PART:'particl',PART_BLIND:'particl',PART_ANON:'particl',BCH:'bitcoin-cash',FIRO:'zcoin',DASH:'dash',PIVX:'pivx',WOW:'wownero',DOGE:'dogecoin',DCR:'decred',NAV:'nav-coin',NMC:'namecoin',LTC_MWEB:'litecoin'};
+const COIN_NAMES={BTC:'Bitcoin',XMR:'Monero',LTC:'Litecoin',PART:'Particl',PART_BLIND:'Particl Blind',PART_ANON:'Particl Anon',BCH:'Bitcoin Cash',FIRO:'Firo',DASH:'Dash',PIVX:'PIVX',WOW:'Wownero',DOGE:'Dogecoin',DCR:'Decred',NAV:'Navcoin',NMC:'Namecoin',LTC_MWEB:'Litecoin MWEB'};
+const COIN_IMG={BTC:'Bitcoin',XMR:'Monero',LTC:'Litecoin',PART:'Particl',PART_BLIND:'Particl-Blind',PART_ANON:'Particl-Anon',BCH:'Bitcoin-Cash',FIRO:'Firo',DASH:'Dash',PIVX:'PIVX',WOW:'Wownero',DOGE:'Dogecoin',DCR:'Decred',NAV:'Navcoin',NMC:'Namecoin',LTC_MWEB:'Litecoin'};
+const SWAP_TYPES={1:'Secret Hash',2:'Seller First',3:'Seller First',4:'Buyer First',5:'Adaptor Sig',6:'Adaptor Sig'};
 
-let allOffers = [];
-let latestPrices = {};
-let currentFilter = 'ALL';
-let currentSort = 'timestamp';
-let sortAsc = false;
-let lastUpdated = '';
+let allOffers=[],latestPrices={},pricesEUR={},pricesGBP={},pricesZAR={},pricesCNY={},pricesJPY={},selectedPair='ALL',selectedCoin='ALL';
+let currentSort='timestamp',sortAsc=false,lastFetchTime=0,countdown=300;
+let priceChart=null,depthChart=null,histChart=null,countdownInterval=null;
+const REFRESH_INTERVAL=300; // 5 minutes to match GitHub Actions
 
-function coinImg(ticker, size=20) {
-  const name = COIN_IMG[ticker] || ticker;
-  return `<img src="images/coins/${name}-20.png" alt="${ticker}" class="rounded-full" width="${size}" height="${size}" onerror="this.style.display='none'">`;
+function coinImg(t,s=20){return `<img src="images/coins/${(COIN_IMG[t]||t).replace(' ','-')}-20.png" alt="${t}" class="rounded-full" width="${s}" height="${s}" onerror="this.style.display='none'">`;}
+function formatUSD(v){if(!v)return'';return v>=1?'$'+v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):'$'+v.toFixed(4);}
+function formatDuration(s){if(s<=0)return'Expired';const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return d>0?d+'d '+h+'h':h>0?h+'h '+m+'m':m+'m';}
+function calcMarketPct(o){const fp=latestPrices[COIN_GECKO_IDS[o.coin_from]],tp=latestPrices[COIN_GECKO_IDS[o.coin_to]];if(!fp||!tp)return null;const fa=parseFloat(o.amount_from_str),ta=parseFloat(o.amount_to_str);if(!fa||!ta)return null;const fv=fa*fp,tv=ta*tp;if(!fv||!tv)return null;return(-((tv/fv)-1))*100;}
+
+function getFilteredOffers(){
+  let o=[...allOffers];
+  if(selectedCoin!=='ALL') o=o.filter(x=>x.coin_from===selectedCoin||x.coin_to===selectedCoin);
+  if(selectedPair!=='ALL'){const[b,q]=selectedPair.split('/');o=o.filter(x=>(x.coin_from===b&&x.coin_to===q)||(x.coin_from===q&&x.coin_to===b));}
+  return o;
+}
+function getPairs(){
+  const s=new Set();allOffers.forEach(o=>{const a=o.coin_from,b=o.coin_to;s.add(a<b?a+'/'+b:b+'/'+a);});return[...s].sort();
+}
+function getBidsAsks(pair){
+  const[base,quote]=pair.split('/'),bids=[],asks=[];
+  allOffers.forEach(o=>{const fa=parseFloat(o.amount_from_str),ta=parseFloat(o.amount_to_str);if(!fa||!ta)return;
+    if(o.coin_from===base&&o.coin_to===quote)asks.push({price:ta/fa,amount:fa,total:ta,offer:o});
+    else if(o.coin_from===quote&&o.coin_to===base)bids.push({price:fa/ta,amount:ta,total:fa,offer:o});
+  });
+  bids.sort((a,b)=>b.price-a.price);asks.sort((a,b)=>a.price-b.price);return{bids,asks};
+}
+function computeSpread(bids,asks){
+  if(!bids.length||!asks.length)return null;
+  const bb=bids[0].price,ba=asks[0].price,abs=ba-bb;return{bestBid:bb,bestAsk:ba,abs,pct:bb>0?(abs/bb)*100:0};
 }
 
-function timeAgo(ts) {
-  const s = Math.floor(Date.now()/1000) - ts;
-  if (s < 60) return `${s}s ago`;
-  if (s < 3600) return `${Math.floor(s/60)}m ago`;
-  if (s < 86400) return `${Math.floor(s/3600)}h ago`;
-  return `${Math.floor(s/86400)}d ago`;
+function chartColors(){
+  const dk=document.documentElement.classList.contains('dark');
+  return{text:dk?'#d1d5db':'#4b5563',grid:dk?'rgba(255,255,255,.06)':'rgba(0,0,0,.06)',bidFill:'rgba(16,185,129,.3)',bidLine:'#10b981',askFill:'rgba(239,68,68,.3)',askLine:'#ef4444',line:dk?'#3b82f6':'#2563eb',lineFill:dk?'rgba(59,130,246,.1)':'rgba(37,99,235,.1)'};
+}
+function renderDepthChart(bids,asks){
+  const w=document.getElementById('depth-chart-wrap');
+  if(!bids.length&&!asks.length){w.style.display='none';return;}
+  w.style.display='';const c=chartColors();
+  let cb=[],ca=[],v=0;
+  for(const b of bids){v+=b.amount;cb.push({x:b.price,y:v});}cb.reverse();
+  v=0;for(const a of asks){v+=a.amount;ca.push({x:a.price,y:v});}
+  if(depthChart)depthChart.destroy();
+  depthChart=new Chart(document.getElementById('depthChart'),{type:'line',data:{datasets:[
+    {label:'Bids',data:cb,borderColor:c.bidLine,backgroundColor:c.bidFill,fill:true,stepped:'after',pointRadius:0,borderWidth:2},
+    {label:'Asks',data:ca,borderColor:c.askLine,backgroundColor:c.askFill,fill:true,stepped:'before',pointRadius:0,borderWidth:2}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+    scales:{x:{type:'linear',title:{display:true,text:'Price',color:c.text,font:{size:10}},ticks:{color:c.text,font:{size:9}},grid:{color:c.grid}},
+            y:{title:{display:true,text:'Cumulative',color:c.text,font:{size:10}},ticks:{color:c.text,font:{size:9}},grid:{color:c.grid}}},
+    interaction:{mode:'nearest',intersect:false}}});
+}
+function renderHistogram(offers){
+  const w=document.getElementById('histogram-wrap');
+  const sizes=offers.map(o=>{const p=latestPrices[COIN_GECKO_IDS[o.coin_from]];return p?parseFloat(o.amount_from_str)*p:0;}).filter(v=>v>0);
+  if(!sizes.length){w.style.display='none';return;}w.style.display='';const c=chartColors();
+  const mx=Math.max(...sizes),bn=Math.min(12,Math.max(4,Math.ceil(mx/100))),bs=mx/bn,buckets=new Array(bn).fill(0),labels=[];
+  sizes.forEach(v=>{const i=Math.min(Math.floor(v/bs),bn-1);buckets[i]++;});
+  for(let i=0;i<bn;i++)labels.push('$'+Math.round(i*bs)+'-'+Math.round((i+1)*bs));
+  if(histChart)histChart.destroy();
+  histChart=new Chart(document.getElementById('histogramChart'),{type:'bar',data:{labels,datasets:[{label:'Orders',data:buckets,backgroundColor:'rgba(59,130,246,.5)',borderColor:'#3b82f6',borderWidth:1}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{ticks:{color:c.text,font:{size:8},maxRotation:45},grid:{display:false}},y:{ticks:{color:c.text,font:{size:9},stepSize:1},grid:{color:c.grid}}}}});
+}
+async function fetchPriceHistory(days='1'){
+  document.querySelectorAll('.ph-btn').forEach(b=>{b.classList.remove('bg-blue-500','text-white');b.classList.add('bg-bsx-600','text-gray-300');});
+  const btn=document.querySelector(`.ph-btn[data-d="${days}"]`);
+  if(btn){btn.classList.add('bg-blue-500','text-white');btn.classList.remove('bg-bsx-600','text-gray-300');}
+  const w=document.getElementById('price-chart-wrap');
+  let coinId=null;
+  if(selectedPair!=='ALL')coinId=COIN_GECKO_IDS[selectedPair.split('/')[0]];
+  else if(selectedCoin!=='ALL')coinId=COIN_GECKO_IDS[selectedCoin];
+  if(!coinId){w.style.display='none';return;}w.style.display='';
+  try{const r=await fetch(`https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=usd&days=${days}`);const d=await r.json();renderPriceChart(d.prices||[]);}catch(e){console.warn('Price history failed:',e);}
+}
+function renderPriceChart(prices){
+  if(!prices.length)return;const c=chartColors();
+  const data=prices.map(([t,p])=>({x:t,y:p}));
+  if(priceChart)priceChart.destroy();
+  priceChart=new Chart(document.getElementById('priceChart'),{type:'line',data:{datasets:[{label:'Price (USD)',data,borderColor:c.line,backgroundColor:c.lineFill,fill:true,pointRadius:0,borderWidth:1.5,tension:.1}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{type:'linear',ticks:{color:c.text,font:{size:9},callback:v=>new Date(v).toLocaleDateString(undefined,{month:'short',day:'numeric'})},grid:{color:c.grid}},
+              y:{ticks:{color:c.text,font:{size:9},callback:v=>'$'+v.toLocaleString()},grid:{color:c.grid}}},
+      interaction:{mode:'nearest',intersect:false}}});
 }
 
-function formatTime(ts) {
-  const d = new Date(ts * 1000);
-  const day = d.toLocaleDateString(undefined, { month:'short', day:'numeric' });
-  const time = d.toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' });
-  return { day, time };
+function renderBuySell(bids,asks,pair){
+  const[base,quote]=pair.split('/');
+  const bn=COIN_NAMES[base]||base,qn=COIN_NAMES[quote]||quote;
+  document.getElementById('bid-count').textContent=bids.length+' orders';
+  document.getElementById('ask-count').textContent=asks.length+' orders';
+  // Update buy/sell headers with coin names
+  document.querySelector('#buysell-wrap .text-green-400').innerHTML=`Buy ${bn} <span class="text-green-300 text-xs font-normal">(Bids — paying ${qn})</span>`;
+  document.querySelector('#buysell-wrap .text-red-400').innerHTML=`Sell ${bn} <span class="text-red-300 text-xs font-normal">(Asks — receiving ${qn})</span>`;
+  const bb=document.getElementById('bids-body'),mbt=bids.reduce((m,b)=>Math.max(m,b.total),0);
+  const pu=latestPrices[COIN_GECKO_IDS[base]];
+  bb.innerHTML=bids.slice(0,50).map(b=>{const p=mbt?(b.total/mbt*100):0;const usd=pu?' <span class="text-gray-400 dark:text-gray-500">('+formatUSD(b.amount*pu)+')</span>':'';return`<tr class="vol-bar hover:bg-green-900/10"><td class="py-1.5 px-2 text-green-400 whitespace-nowrap">${b.price.toFixed(8)} <span class="text-gray-400 dark:text-gray-500">${quote}</span></td><td class="py-1.5 px-2 text-right text-gray-700 dark:text-gray-100 whitespace-nowrap">${b.amount.toFixed(4)}${usd}</td><td class="py-1.5 px-2 text-right text-gray-500 dark:text-gray-300 whitespace-nowrap" style="background:linear-gradient(to left,rgba(16,185,129,.15) ${p}%,transparent ${p}%)">${b.total.toFixed(4)}</td></tr>`;}).join('')||'<tr><td colspan="3" class="py-4 text-center text-gray-400">No buy orders</td></tr>';
+  const ab=document.getElementById('asks-body'),mat=asks.reduce((m,a)=>Math.max(m,a.total),0);
+  ab.innerHTML=asks.slice(0,50).map(a=>{const p=mat?(a.total/mat*100):0;const usd=pu?' <span class="text-gray-400 dark:text-gray-500">('+formatUSD(a.amount*pu)+')</span>':'';return`<tr class="vol-bar hover:bg-red-900/10"><td class="py-1.5 px-2 text-red-400 whitespace-nowrap">${a.price.toFixed(8)} <span class="text-gray-400 dark:text-gray-500">${quote}</span></td><td class="py-1.5 px-2 text-right text-gray-700 dark:text-gray-100 whitespace-nowrap">${a.amount.toFixed(4)}${usd}</td><td class="py-1.5 px-2 text-right text-gray-500 dark:text-gray-300 whitespace-nowrap" style="background:linear-gradient(to left,rgba(239,68,68,.15) ${p}%,transparent ${p}%)">${a.total.toFixed(4)}</td></tr>`;}).join('')||'<tr><td colspan="3" class="py-4 text-center text-gray-400">No sell orders</td></tr>';
 }
 
-function formatUSD(val) {
-  if (!val || val === 0) return '';
-  if (val >= 1) return '$' + val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return '$' + val.toFixed(4);
-}
-
-function formatDuration(seconds) {
-  if (seconds <= 0) return 'Expired';
-  const d = Math.floor(seconds / 86400);
-  const h = Math.floor((seconds % 86400) / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (d > 0) return d + 'd ' + h + 'h';
-  if (h > 0) return h + 'h ' + m + 'm';
-  return m + 'm';
-}
-
-function calcMarketPct(offer) {
-  // Same logic as BSX: calculateProfitLoss (non-own-offer path)
-  const fromPriceUSD = latestPrices[COIN_GECKO_IDS[offer.coin_from]];
-  const toPriceUSD = latestPrices[COIN_GECKO_IDS[offer.coin_to]];
-  if (!fromPriceUSD || !toPriceUSD) return null;
-  const fromAmount = parseFloat(offer.amount_from_str);
-  const toAmount = parseFloat(offer.amount_to_str);
-  if (!fromAmount || !toAmount) return null;
-  const fromValueUSD = fromAmount * fromPriceUSD;
-  const toValueUSD = toAmount * toPriceUSD;
-  if (!fromValueUSD || !toValueUSD) return null;
-  // Non-own offer: negative means taker pays more than market
-  return (-((toValueUSD / fromValueUSD) - 1)) * 100;
-}
-
-function renderOffers() {
-  let offers = [...allOffers];
-  if (currentFilter !== 'ALL') {
-    offers = offers.filter(o => o.coin_from === currentFilter || o.coin_to === currentFilter);
-  }
-  // Add market_pct for sorting
-  offers.forEach(o => { o.market_pct = calcMarketPct(o) || 0; });
-  offers.sort((a, b) => sortAsc ? a[currentSort] - b[currentSort] : b[currentSort] - a[currentSort]);
-
-  const tbody = document.getElementById('offers-body');
-  if (!offers.length) {
-    tbody.innerHTML = `<tr><td colspan="7" class="py-16 text-center text-gray-400 dark:text-gray-300 text-sm">No offers found</td></tr>`;
-    return;
-  }
-  tbody.innerHTML = offers.map(o => {
-    const fromSym = o.coin_from, toSym = o.coin_to;
-    const fromDisplay = COIN_NAMES[fromSym] || fromSym;
-    const toDisplay = COIN_NAMES[toSym] || toSym;
-    const fromImgFile = (COIN_IMG[fromSym] || fromSym).replace(' ','-') + '.png';
-    const toImgFile = (COIN_IMG[toSym] || toSym).replace(' ','-') + '.png';
-    const fromSymbol = fromSym, toSymbol = toSym;
-    const amtFrom = parseFloat(o.amount_from_str) || 0;
-    const amtTo = parseFloat(o.amount_to_str) || 0;
-    const rate = amtFrom ? (amtTo / amtFrom) : 0;
-    const inverseRate = rate ? (1 / rate) : 0;
-    const swapLabel = SWAP_TYPES[o.swap_type] || 'Swap';
-    // USD rate: rate * toPriceUSD (same as BSX createRateColumn)
-    const pTo = latestPrices[COIN_GECKO_IDS[toSym]];
-    const rateInUSD = pTo && rate ? rate * pTo : null;
-    // Market percentage
-    const mktPct = calcMarketPct(o);
-    let mktPctStr = '', mktPctClass = 'text-gray-400';
-    if (mktPct !== null) {
-      const sign = mktPct >= 0 ? '+' : '';
-      mktPctStr = sign + mktPct.toFixed(2) + '%';
-      mktPctClass = mktPct > 0 ? 'text-green-400' : mktPct < 0 ? 'text-red-400' : 'text-gray-400';
-    }
-    // Time
-    const posted = new Date(o.timestamp * 1000);
-    const postedStr = posted.toLocaleDateString(undefined, {month:'short',day:'numeric'}) + ' ' + posted.toLocaleTimeString(undefined, {hour:'2-digit',minute:'2-digit'});
-    const expiresIn = o.expire_at ? timeAgo(Math.floor(Date.now()/1000) - (o.expire_at - Math.floor(Date.now()/1000))) : '';
-    const now = Math.floor(Date.now()/1000);
-    const timeLeft = (o.expire_at || 0) - now;
-    let strokeColor = '#10B981';
-    if (timeLeft <= 300) strokeColor = '#9CA3AF';
-    else if (timeLeft <= 1800) strokeColor = '#3B82F6';
-
-    return `
-    <tr class="relative opacity-100 text-gray-500 dark:text-gray-100 hover:bg-coolGray-200 dark:hover:bg-gray-600">
-      <!-- Time -->
-      <td class="py-3 pl-1 pr-2 text-xs whitespace-nowrap">
-        <div class="flex items-center">
-          <div class="relative">
-            <svg class="w-5 h-5 rounded-full mr-4 cursor-pointer" xmlns="http://www.w3.org/2000/svg" height="20" width="20" viewBox="0 0 24 24">
-              <g stroke-linecap="round" stroke-width="2" fill="none" stroke="${strokeColor}" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="11"></circle>
-                <polyline points="12,6 12,12 18,12" stroke="${strokeColor}"></polyline>
-              </g>
-            </svg>
-          </div>
-          <div class="flex flex-col">
-            <div class="text-xs whitespace-nowrap dark:text-gray-200"><span class="bold">Posted:</span> ${postedStr}</div>
-            <div class="text-xs whitespace-nowrap dark:text-gray-300"><span class="bold">Expires in:</span> ${timeLeft > 0 ? formatDuration(timeLeft) : 'Expired'}</div>
-          </div>
-        </div>
-      </td>
-      <!-- Max Send (Taker sends coin_to) -->
-      <td class="py-0">
-        <div class="py-3 px-4 text-left">
-          <div class="items-center monospace">
-            <div class="pr-2">
-              <div class="text-sm font-semibold dark:text-white">${amtTo.toFixed(4)}</div>
-              <div class="text-sm text-gray-500 dark:text-gray-400">${toDisplay}</div>
+function renderAllOrders(){
+  let offers=getFilteredOffers();
+  offers.forEach(o=>{o._mktPct=calcMarketPct(o)||0;});
+  const sk=currentSort==='market_pct'?'_mktPct':currentSort;
+  offers.sort((a,b)=>sortAsc?(a[sk]||0)-(b[sk]||0):(b[sk]||0)-(a[sk]||0));
+  const tbody=document.getElementById('offers-body');
+  if(!offers.length){tbody.innerHTML='<tr><td colspan="7" class="py-16 text-center text-gray-400 dark:text-gray-300 text-sm">No offers match filter</td></tr>';return;}
+  // Find best deal (highest positive market %)
+  let bestIdx=-1,bestPct=-Infinity;
+  offers.forEach((o,i)=>{const m=o._mktPct;if(m>0&&m>bestPct){bestPct=m;bestIdx=i;}});
+  let totalUSD=0;const now=Math.floor(Date.now()/1000);
+  tbody.innerHTML=offers.map((o,idx)=>{
+    const fs=o.coin_from,ts=o.coin_to,fd=COIN_NAMES[fs]||fs,td=COIN_NAMES[ts]||ts;
+    const fi=(COIN_IMG[fs]||fs).replace(' ','-')+'.png',ti=(COIN_IMG[ts]||ts).replace(' ','-')+'.png';
+    const af=parseFloat(o.amount_from_str)||0,at=parseFloat(o.amount_to_str)||0;
+    const rate=af?at/af:0,inv=rate?1/rate:0,sl=SWAP_TYPES[o.swap_type]||'Swap';
+    const pf=latestPrices[COIN_GECKO_IDS[fs]],pt=latestPrices[COIN_GECKO_IDS[ts]];
+    const usdFrom=pf?(af*pf):0,usdTo=pt?(at*pt):0;
+    const ru=pt&&rate?'$'+(rate*pt).toFixed(2)+' USD':'N/A';
+    const usdFromStr=usdFrom?formatUSD(usdFrom):'';
+    const usdToStr=usdTo?formatUSD(usdTo):'';
+    totalUSD+=usdFrom;
+    const mp=calcMarketPct(o);let ms='—',mc='text-gray-400';
+    if(mp!==null){ms=(mp>=0?'+':'')+mp.toFixed(2)+'%';mc=mp>0?'text-green-400':mp<0?'text-red-400':'text-gray-400';}
+    // Age badge
+    const age=now-o.timestamp;
+    const isNew=age<3600;
+    const newBadge=isNew?'<span class="badge-new">NEW</span>':'';
+    // Expiry
+    const pd=new Date(o.timestamp*1000);
+    const ps=pd.toLocaleDateString(undefined,{month:'short',day:'numeric'})+' '+pd.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
+    const tl=(o.expire_at||(o.timestamp+(o.time_valid||14400)))-now;
+    let sc='#10B981';if(tl<=300)sc='#9CA3AF';else if(tl<=1800)sc='#3B82F6';
+    const expireWarn=tl<=300&&tl>0?' ⚠️':'';
+    // Best deal highlight
+    const isBest=idx===bestIdx;
+    const rowCls=`text-gray-700 dark:text-gray-100 hover:bg-coolGray-200 dark:hover:bg-bsx-600 border-b border-gray-200 dark:border-white/5${isBest?' best-deal':''}`;
+    const expireHtml=tl>0?formatDuration(tl)+expireWarn:'<span class="text-red-400">Expired</span>';
+    return`<tr class="${rowCls}">
+      <td class="desk-cell py-3 pl-3 pr-2 text-xs whitespace-nowrap"><div class="flex items-center gap-2"><svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24"><g stroke-linecap="round" stroke-width="2" fill="none" stroke="${sc}" stroke-linejoin="round"><circle cx="12" cy="12" r="11"/><polyline points="12,6 12,12 18,12" stroke="${sc}"/></g></svg><div><div class="text-xs dark:text-gray-100"><span class="bold">Posted:</span> ${ps}${newBadge}</div><div class="text-xs text-gray-500 dark:text-gray-400"><span class="bold">Expires:</span> ${expireHtml}</div></div></div></td>
+      <td class="desk-cell py-0"><div class="py-2 px-3 text-left monospace"><div class="text-sm font-semibold text-gray-800 dark:text-white">${at.toFixed(4)} <span class="text-xs font-normal text-gray-500 dark:text-gray-400">${ts}</span></div>${usdToStr?'<div class="text-xs text-gray-400 dark:text-gray-500">'+usdToStr+'</div>':''}</div></td>
+      <td class="desk-cell py-0 px-0 text-center"><div class="flex items-center justify-evenly"><img class="h-10" src="images/coins/${ti}" alt="${td}" onerror="this.style.display='none'"><svg class="w-5 h-5 mx-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" class="text-gray-400 dark:text-gray-300"/></svg><img class="h-10" src="images/coins/${fi}" alt="${fd}" onerror="this.style.display='none'"></div></td>
+      <td class="desk-cell p-0"><div class="py-2 px-3 text-right monospace"><div class="text-sm font-semibold text-gray-800 dark:text-white">${af.toFixed(4)} <span class="text-xs font-normal text-gray-500 dark:text-gray-400">${fs}</span></div>${usdFromStr?'<div class="text-xs text-gray-400 dark:text-gray-500">'+usdFromStr+'</div>':''}</div></td>
+      <td class="desk-cell py-3 px-2 text-right monospace text-xs"><div class="flex flex-col items-end"><span class="text-sm bold text-gray-800 dark:text-white">${ru}</span><span class="bold text-gray-700 dark:text-gray-200">${rate.toFixed(8)}</span><span class="text-gray-500 dark:text-gray-400">${ts}/${fs}</span></div></td>
+      <td class="desk-cell py-3 px-2 text-center monospace"><span class="text-sm font-bold ${mc}">${ms}${isBest?' ★':''}</span></td>
+      <td class="desk-cell py-3 px-2 text-center"><span class="inline-block px-2 py-1 text-xs font-medium rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">${sl}</span></td>
+      <td class="mob-card-wrap" colspan="7" style="display:none">
+        <div class="p-3 border-b border-gray-200 dark:border-white/6${isBest?' best-deal':''}">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24"><g stroke-linecap="round" stroke-width="2" fill="none" stroke="${sc}" stroke-linejoin="round"><circle cx="12" cy="12" r="11"/><polyline points="12,6 12,12 18,12" stroke="${sc}"/></g></svg>
+              ${ps}${newBadge}
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold ${mc}">${ms}${isBest?' ★':''}</span>
+              <span class="text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">${sl}</span>
             </div>
           </div>
-        </div>
-      </td>
-      <!-- Swap -->
-      <td class="py-0 px-0 text-right text-sm">
-        <div class="flex items-center justify-evenly monospace">
-          <span class="inline-flex mr-3 ml-3 align-middle items-center justify-center w-18 h-20 rounded">
-            <img class="h-12" src="images/coins/${toImgFile}" alt="${toDisplay}" onerror="this.style.display='none'">
-          </span>
-          <svg aria-hidden="true" class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-            <path fill-rule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd"></path>
-          </svg>
-          <span class="inline-flex ml-3 mr-3 align-middle items-center justify-center w-18 h-20 rounded">
-            <img class="h-12" src="images/coins/${fromImgFile}" alt="${fromDisplay}" onerror="this.style.display='none'">
-          </span>
-        </div>
-      </td>
-      <!-- Max Recv (Taker receives coin_from) -->
-      <td class="p-0">
-        <div class="py-3 px-4 text-right">
-          <div class="items-center monospace">
-            <div class="pr-2">
-              <div class="text-sm font-semibold dark:text-white">${amtFrom.toFixed(4)}</div>
-              <div class="text-sm text-gray-500 dark:text-gray-400">${fromDisplay}</div>
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <div class="flex-1">
+              <div class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">You send</div>
+              <div class="flex items-center gap-1.5">
+                <img class="w-5 h-5 rounded-full" src="images/coins/${ti}" alt="${td}" onerror="this.style.display='none'">
+                <span class="monospace font-semibold text-sm text-gray-800 dark:text-white">${at.toFixed(4)}</span>
+                <span class="text-xs text-gray-500 dark:text-gray-400">${ts}</span>
+              </div>
+              ${usdToStr?'<div class="text-xs text-gray-400 dark:text-gray-500 ml-6.5">'+usdToStr+'</div>':''}
+            </div>
+            <svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+            <div class="flex-1 text-right">
+              <div class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">You get</div>
+              <div class="flex items-center gap-1.5 justify-end">
+                <span class="text-xs text-gray-500 dark:text-gray-400">${fs}</span>
+                <span class="monospace font-semibold text-sm text-gray-800 dark:text-white">${af.toFixed(4)}</span>
+                <img class="w-5 h-5 rounded-full" src="images/coins/${fi}" alt="${fd}" onerror="this.style.display='none'">
+              </div>
+              ${usdFromStr?'<div class="text-xs text-gray-400 dark:text-gray-500">'+usdFromStr+'</div>':''}
             </div>
           </div>
-        </div>
-      </td>
-      <!-- Rate -->
-      <td class="py-3 semibold monospace text-xs text-right items-center">
-        <div class="relative">
-          <div class="flex flex-col items-end pr-3">
-            <span class="text-sm bold text-gray-700 dark:text-white">
-              ${rateInUSD !== null ? '$' + rateInUSD.toFixed(2) + ' USD' : 'N/A'}
-            </span>
-            <span class="bold text-gray-700 dark:text-white">
-              ${rate.toFixed(8)} ${toSymbol}/${fromSymbol}
-            </span>
-            <span class="semibold text-gray-400 dark:text-gray-300">
-              ${inverseRate.toFixed(8)} ${fromSymbol}/${toSymbol}
-            </span>
+          <div class="flex items-center justify-between text-xs monospace">
+            <span class="text-gray-500 dark:text-gray-400">${expireHtml}</span>
+            <span class="text-gray-700 dark:text-gray-200">${ru} <span class="text-gray-400 dark:text-gray-500">· ${rate.toFixed(6)} ${ts}/${fs}</span></span>
           </div>
         </div>
       </td>
-      <!-- Market +/- -->
-      <td class="py-3 px-2 bold text-sm text-center monospace items-center">
-        <div class="relative">
-          <div class="profittype">
-            <span class="text-lg font-bold ${mktPctClass}">${mktPctStr || '—'}</span>
-          </div>
-        </div>
-      </td>
-      <!-- Trade -->
-      <td class="py-6 px-2 text-center">
-        <div class="flex justify-center items-center h-full">
-          <span class="inline-block w-20 py-1 px-2 font-medium text-center text-sm rounded-md bg-blue-500 text-white">${swapLabel}</span>
-        </div>
-      </td>
-    </tr>`;
+    </tr>`;}).join('');
+  const volStr=totalUSD>0?formatUSD(totalUSD):'—';
+  const tv=document.getElementById('totalVolume');if(tv)tv.textContent=volStr;
+  const hv=document.getElementById('header-volume');if(hv)hv.textContent='Est. Vol: '+volStr;
+}
+
+// Pair summary ticker cards
+function renderTicker(){
+  const pairs=getPairs(),container=document.getElementById('ticker-cards');
+  if(!pairs.length){container.innerHTML='';return;}
+  container.innerHTML=pairs.map(p=>{
+    const[b,q]=p.split('/');
+    const{bids,asks}=getBidsAsks(p);
+    const total=bids.length+asks.length;
+    const bestBid=bids.length?bids[0].price:0,bestAsk=asks.length?asks[0].price:0;
+    const sp=bestBid&&bestAsk?((bestAsk-bestBid)/bestBid*100).toFixed(2):'—';
+    const pb=latestPrices[COIN_GECKO_IDS[b]],pq=latestPrices[COIN_GECKO_IDS[q]];
+    const pbStr=pb?formatUSD(pb):'—', pqStr=pq?formatUSD(pq):'—';
+    const isSelected=selectedPair===p;
+    return`<div onclick="selectPair('${p}')" class="flex-shrink-0 px-3 py-2 rounded-lg cursor-pointer transition ${isSelected?'bg-blue-500/20 border border-blue-500/40':'bg-gray-100 dark:bg-bsx-500 border border-gray-300 dark:border-transparent hover:border-gray-400 dark:hover:border-bsx-400'}">
+      <div class="flex items-center gap-1.5 mb-1">
+        <img src="images/coins/${(COIN_IMG[b]||b).replace(' ','-')}-20.png" class="w-4 h-4 rounded-full" onerror="this.style.display='none'">
+        <img src="images/coins/${(COIN_IMG[q]||q).replace(' ','-')}-20.png" class="w-4 h-4 rounded-full" onerror="this.style.display='none'">
+        <span class="text-sm font-semibold text-gray-800 dark:text-white">${p}</span>
+        <span class="text-xs text-gray-500 dark:text-gray-400 bg-gray-200 dark:bg-bsx-400 px-1.5 rounded-full">${total}</span>
+      </div>
+      <div class="text-xs monospace text-gray-700 dark:text-gray-200">${b}: ${pbStr} · ${q}: ${pqStr}</div>
+      <div class="text-xs text-gray-500 dark:text-gray-400">Spread: <span class="${parseFloat(sp)>5?'text-yellow-500':'text-gray-500 dark:text-gray-400'}">${sp}%</span></div>
+    </div>`;
   }).join('');
 }
 
-function buildFilters() {
-  const coins = [...new Set(allOffers.flatMap(o => [o.coin_from, o.coin_to]))].sort();
-  const container = document.getElementById('coin-filters');
-  container.innerHTML = coins.map(c =>
-    `<button class="filter-btn px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-600 text-gray-300 flex items-center gap-1.5" data-coin="${c}" onclick="setFilter('${c}', this)">
-      ${coinImg(c, 20)} ${c}
-    </button>`
+// Liquidity heatmap
+function renderHeatmap(){
+  const coins=[...new Set(allOffers.flatMap(o=>[o.coin_from,o.coin_to]))].sort();
+  if(coins.length<2){document.getElementById('heatmap-wrap').style.display='none';return;}
+  document.getElementById('heatmap-wrap').style.display='';
+  const vol={},cnt={};
+  allOffers.forEach(o=>{
+    const k=o.coin_from+'→'+o.coin_to;
+    const p=latestPrices[COIN_GECKO_IDS[o.coin_from]];
+    vol[k]=(vol[k]||0)+(p?parseFloat(o.amount_from_str)*p:0);
+    cnt[k]=(cnt[k]||0)+1;
+  });
+  const maxVol=Math.max(...Object.values(vol),1);
+  // Full-width table
+  let html='<table class="w-full" style="border-collapse:separate;border-spacing:3px"><tr><td></td>';
+  coins.forEach(c=>{html+=`<td class="text-center text-xs font-bold text-gray-600 dark:text-gray-300 pb-1">${c}</td>`;});
+  html+='</tr>';
+  coins.forEach(from=>{
+    html+=`<tr><td class="text-xs font-bold text-gray-600 dark:text-gray-300 pr-2 whitespace-nowrap text-right">${from}</td>`;
+    coins.forEach(to=>{
+      if(from===to){html+='<td><div class="heatmap-cell bg-gray-200 dark:bg-bsx-600 text-gray-400 dark:text-gray-500">—</div></td>';return;}
+      const k=from+'→'+to,v=vol[k]||0,n=cnt[k]||0;
+      const intensity=v>0?Math.max(0.2,Math.pow(v/maxVol,0.5)):0;
+      const bg=v>0?`rgba(59,130,246,${intensity.toFixed(2)})`:'rgba(128,128,128,0.08)';
+      const textColor=intensity>0.5?'#fff':v>0?'#93c5fd':'#666';
+      const pair=from<to?from+'/'+to:to+'/'+from;
+      html+=`<td><div class="heatmap-cell monospace" style="background:${bg};color:${textColor}" onclick="selectPair('${pair}')" title="${from} → ${to}: ${n} offer${n!==1?'s':''}, ${v>0?formatUSD(v):'no volume'}">${v>0?(v>=1000?'$'+Math.round(v/1000)+'k':'$'+Math.round(v)):'·'}</div></td>`;
+    });
+    html+='</tr>';
+  });
+  html+='</table>';
+  document.getElementById('heatmap-grid').innerHTML=html;
+}
+
+function renderAll(){
+  const offers=getFilteredOffers();
+  if(selectedPair!=='ALL'){
+    const{bids,asks}=getBidsAsks(selectedPair);
+    const[base,quote]=selectedPair.split('/');
+    document.getElementById('buysell-wrap').style.display='';
+    renderBuySell(bids,asks,selectedPair);renderDepthChart(bids,asks);renderHistogram(offers);
+    const sp=computeSpread(bids,asks),bar=document.getElementById('spread-bar');
+    if(sp){bar.style.display='';
+      document.getElementById('best-bid').textContent=sp.bestBid.toFixed(8)+' '+quote;
+      document.getElementById('best-ask').textContent=sp.bestAsk.toFixed(8)+' '+quote;
+      document.getElementById('spread-abs').textContent=sp.abs.toFixed(8)+' '+quote;
+      document.getElementById('spread-pct').textContent=sp.pct.toFixed(2)+'%';
+      // Fiat prices for base coin
+      const gid=COIN_GECKO_IDS[base],bn=COIN_NAMES[base]||base;
+      document.getElementById('fiat-coin-label').textContent='1 '+bn+' =';
+      const fmt=(v,s,d=2)=>v?s+v.toLocaleString(undefined,{maximumFractionDigits:d}):'—';
+      document.getElementById('spread-usd').textContent=fmt(latestPrices[gid],'$');
+      document.getElementById('spread-eur').textContent=fmt(pricesEUR[gid],'€');
+      document.getElementById('spread-gbp').textContent=fmt(pricesGBP[gid],'£');
+      document.getElementById('spread-zar').textContent=fmt(pricesZAR[gid],'R');
+      document.getElementById('spread-cny').textContent=fmt(pricesCNY[gid],'¥');
+      document.getElementById('spread-jpy').textContent=fmt(pricesJPY[gid],'¥',0);
+    }else{bar.style.display='none';}
+    fetchPriceHistory('1');
+  }else{
+    document.getElementById('buysell-wrap').style.display='none';
+    document.getElementById('depth-chart-wrap').style.display='none';
+    document.getElementById('spread-bar').style.display='none';
+    if(selectedCoin!=='ALL'){fetchPriceHistory('1');renderHistogram(offers);}
+    else{document.getElementById('price-chart-wrap').style.display='none';document.getElementById('histogram-wrap').style.display='none';}
+  }
+  renderAllOrders();
+}
+
+function buildFilters(){
+  const coins=[...new Set(allOffers.flatMap(o=>[o.coin_from,o.coin_to]))].sort();
+  document.getElementById('coin-filters').innerHTML=coins.map(c=>
+    `<button class="filter-btn px-2 py-1 text-xs font-semibold rounded border flex items-center gap-1" data-coin="${c}" onclick="setCoinFilter('${c}',this)">${coinImg(c,16)} ${c}</button>`
   ).join('');
+  const pairs=getPairs(),sel=document.getElementById('pair-select');
+  sel.innerHTML='<option value="ALL">All Pairs</option>'+pairs.map(p=>`<option value="${p}"${p===selectedPair?' selected':''}>${p}</option>`).join('');
+}
+function setCoinFilter(coin,btn){
+  selectedCoin=coin;selectedPair='ALL';document.getElementById('pair-select').value='ALL';
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');
+  renderAll();renderTicker();
+}
+function selectPair(pair){
+  document.getElementById('pair-select').value=pair;
+  onPairChange(pair);
+}
+function onPairChange(pair){
+  selectedPair=pair;if(pair!=='ALL')selectedCoin='ALL';
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  if(pair==='ALL')document.querySelector('.filter-btn[data-coin="ALL"]').classList.add('active');
+  renderAll();renderTicker();
+}
+function sortBy(field){
+  if(currentSort===field)sortAsc=!sortAsc;else{currentSort=field;sortAsc=false;}
+  document.querySelectorAll('.sort-icon').forEach(el=>el.textContent='');
+  const icon=document.getElementById('sort-'+field);if(icon)icon.textContent=sortAsc?'↑':'↓';renderAllOrders();
 }
 
-function setFilter(coin, btn) {
-  currentFilter = coin;
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  renderOffers();
+function updateRefreshAgo(){
+  const ago=Math.floor((Date.now()-lastFetchTime)/1000);
+  document.getElementById('refresh-ago').textContent=lastFetchTime?(ago<60?ago+'s ago':Math.floor(ago/60)+'m ago'):'—';
+}
+function startCountdown(){
+  countdown=REFRESH_INTERVAL;if(countdownInterval)clearInterval(countdownInterval);
+  countdownInterval=setInterval(()=>{countdown--;
+    const m=Math.floor(countdown/60),s=countdown%60;
+    document.getElementById('refresh-countdown').textContent='('+m+':'+(s<10?'0':'')+s+')';
+    updateRefreshAgo();if(countdown<=0){countdown=REFRESH_INTERVAL;fetchOrderbook();}},1000);
+}
+async function manualRefresh(){
+  document.getElementById('refreshSpinner').classList.add('animate-spin');
+  await fetchPrices();await fetchOrderbook();
+  document.getElementById('refreshSpinner').classList.remove('animate-spin');
 }
 
-function sortBy(field) {
-  if (currentSort === field) { sortAsc = !sortAsc; } else { currentSort = field; sortAsc = false; }
-  document.querySelectorAll('.sort-icon').forEach(el => el.textContent = '');
-  const icon = document.getElementById('sort-' + field);
-  if (icon) icon.textContent = sortAsc ? '↑' : '↓';
-  renderOffers();
-}
-
-function updateStats(data) {
-  document.getElementById('stat-offers').textContent = allOffers.length;
-  document.getElementById('offers-count').textContent = allOffers.length;
-  const pairs = new Set(allOffers.map(o => `${o.coin_from}/${o.coin_to}`));
-  document.getElementById('stat-pairs').textContent = pairs.size;
-  const timeStr = (data && data.updated_at) ? data.updated_at : new Date().toLocaleString();
-  document.getElementById('stat-updated').textContent = timeStr;
-  // Update BSX-style footer
-  const lrt = document.getElementById('lastRefreshTime');
-  if (lrt) lrt.textContent = timeStr;
-  const nec = document.getElementById('newEntriesCount');
-  if (nec) nec.textContent = allOffers.length;
-}
-
-async function fetchPrices() {
-  try {
-    const ids = [...new Set(Object.values(COIN_GECKO_IDS))].join(',');
-    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=' + ids + '&vs_currencies=usd');
-    const data = await r.json();
-    for (const [id, val] of Object.entries(data)) {
-      latestPrices[id] = val.usd;
+async function fetchPrices(){
+  try{const ids=[...new Set(Object.values(COIN_GECKO_IDS))].join(',');
+    const r=await fetch('https://api.coingecko.com/api/v3/simple/price?ids='+ids+'&vs_currencies=usd,eur,gbp,zar,cny,jpy');
+    if(!r.ok){console.warn('CoinGecko API error:',r.status);return;}
+    const d=await r.json();
+    if(d.status){console.warn('CoinGecko rate limited');return;} // rate limit response has {status:{error_code:429}}
+    for(const[id,val]of Object.entries(d)){
+      if(!val||!val.usd)continue;
+      latestPrices[id]=val.usd;pricesEUR[id]=val.eur||0;pricesGBP[id]=val.gbp||0;
+      pricesZAR[id]=val.zar||0;pricesCNY[id]=val.cny||0;pricesJPY[id]=val.jpy||0;
     }
-  } catch (e) {
-    console.warn('Failed to fetch prices:', e);
-  }
+  }catch(e){console.warn('Price fetch failed:',e);}
 }
-
-async function fetchOrderbook() {
-  try {
-    const r = await fetch('orderbook.json?' + Date.now());
-    const data = await r.json();
-    allOffers = data.offers || [];
-    lastUpdated = data.updated_at || '';
-    buildFilters();
-    renderOffers();
-    updateStats(data);
-    document.getElementById('status').textContent = allOffers.length + ' offers';
-  } catch (e) {
-    document.getElementById('status').textContent = 'Error loading data';
-    console.error(e);
-  }
+async function fetchOrderbook(){
+  try{const r=await fetch('orderbook.json?'+Date.now());const d=await r.json();
+    allOffers=d.offers||[];buildFilters();renderAll();renderTicker();renderHeatmap();
+    document.getElementById('offers-count').textContent=allOffers.length;
+    document.getElementById('newEntriesCount').textContent=allOffers.length;
+    document.getElementById('activePairs').textContent=getPairs().length;
+    const ts=(d&&d.updated_at)||new Date().toLocaleString();
+    document.getElementById('lastRefreshTime').textContent=ts;
+    lastFetchTime=Date.now();updateRefreshAgo();countdown=REFRESH_INTERVAL;
+  }catch(e){console.error('Orderbook fetch failed:',e);}
 }
-
-function toggleTheme() {
+function toggleTheme(){
   document.documentElement.classList.toggle('dark');
-  localStorage.setItem('bsx-theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+  localStorage.setItem('bsx-theme',document.documentElement.classList.contains('dark')?'dark':'light');
+  if(selectedPair!=='ALL'||selectedCoin!=='ALL')renderAll();
 }
-
-// Init
-if (localStorage.getItem('bsx-theme') === 'light') document.documentElement.classList.remove('dark');
-(async () => {
-  await fetchPrices();
-  await fetchOrderbook();
-})();
-setInterval(fetchOrderbook, 60000);
-setInterval(fetchPrices, 300000);
+if(localStorage.getItem('bsx-theme')==='light')document.documentElement.classList.remove('dark');
+(async()=>{await fetchPrices();await fetchOrderbook();startCountdown();})();
+setInterval(fetchPrices,300000);
 </script>
 </body>
 </html>
