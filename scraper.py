@@ -112,6 +112,26 @@ def smsg_get_id(msg: bytes) -> bytes:
     return ts.to_bytes(8, byteorder="big") + ripemd160(msg[8:])
 
 
+B58_ALPHABET = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+
+
+def pkh_to_address(version_and_hash: bytes) -> str:
+    """Convert version byte + 20-byte pubkey hash to base58check address."""
+    checksum = hashlib.sha256(hashlib.sha256(version_and_hash).digest()).digest()[:4]
+    data = version_and_hash + checksum
+    n = int.from_bytes(data, "big")
+    result = b""
+    while n > 0:
+        n, r = divmod(n, 58)
+        result = B58_ALPHABET[r:r + 1] + result
+    for b in data:
+        if b == 0:
+            result = b"1" + result
+        else:
+            break
+    return result.decode("ascii")
+
+
 def smsg_decrypt(privkey: bytes, encrypted_message: bytes) -> dict:
     """Decrypt an SMSG message. Returns dict with hex payload, timestamp, etc."""
     assert len(encrypted_message) > SMSG_HDR_LEN
@@ -148,8 +168,12 @@ def smsg_decrypt(privkey: bytes, encrypted_message: bytes) -> dict:
     ofs += 4  # payload length
     payload = plaintext[ofs:]
 
+    # Convert 20-byte pubkey hash to Particl address (base58check, version 0x38)
+    addr_from = pkh_to_address(b"\x38" + pkh_from)
+
     return {"hex": payload.hex(), "sent": smsg_ts,
-            "msgid": smsg_get_id(encrypted_message).hex()}
+            "msgid": smsg_get_id(encrypted_message).hex(),
+            "addr_from": addr_from}
 
 
 # ============================================================================
@@ -452,6 +476,7 @@ class BSXOfferListener(P2PInterface):
                     "swap_type": getattr(offer, "swap_type", 0),
                     "time_valid": getattr(offer, "time_valid", 0),
                     "rate": amount_to / amount_from if amount_from > 0 else 0,
+                    "addr_from": result.get("addr_from", ""),
                 }
                 self.stats["offers_parsed"] += 1
                 log.info(f"  OFFER: {ticker_from}->{ticker_to} "

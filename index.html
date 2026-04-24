@@ -93,6 +93,10 @@
     </div>
     <button class="filter-btn active px-3 py-1.5 text-xs font-semibold rounded border" data-coin="ALL" onclick="setCoinFilter('ALL',this)">All</button>
     <div id="coin-filters" class="flex flex-wrap gap-1.5"></div>
+    <div class="relative ml-auto">
+      <input id="search-id" type="text" placeholder="Search ID or address..." oninput="onSearchChange()" class="bg-white dark:bg-bsx-600 text-gray-800 dark:text-gray-200 text-xs rounded px-3 py-1.5 pl-8 border border-gray-300 dark:border-bsx-400 focus:outline-none focus:border-blue-500 w-48 sm:w-64 monospace" spellcheck="false" autocomplete="off">
+      <svg class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    </div>
   </div>
   <div id="spread-bar" class="text-xs text-gray-500 dark:text-gray-300" style="display:none">
     <div class="flex flex-wrap items-center gap-3 mb-1.5">
@@ -236,7 +240,7 @@ const COIN_NAMES={BTC:'Bitcoin',XMR:'Monero',LTC:'Litecoin',PART:'Particl',PART_
 const COIN_IMG={BTC:'Bitcoin',XMR:'Monero',LTC:'Litecoin',PART:'Particl',PART_BLIND:'Particl-Blind',PART_ANON:'Particl-Anon',BCH:'Bitcoin-Cash',FIRO:'Firo',DASH:'Dash',PIVX:'PIVX',WOW:'Wownero',DOGE:'Dogecoin',DCR:'Decred',NAV:'Navcoin',NMC:'Namecoin',LTC_MWEB:'Litecoin'};
 const SWAP_TYPES={1:'Secret Hash',2:'Seller First',3:'Seller First',4:'Buyer First',5:'Adaptor Sig',6:'Adaptor Sig'};
 
-let allOffers=[],latestPrices={},pricesEUR={},pricesGBP={},pricesZAR={},pricesCNY={},pricesJPY={},selectedPair='ALL',selectedCoin='ALL';
+let allOffers=[],latestPrices={},pricesEUR={},pricesGBP={},pricesZAR={},pricesCNY={},pricesJPY={},selectedPair='ALL',selectedCoin='ALL',searchQuery='';
 let currentSort='timestamp',sortAsc=false,lastFetchTime=0,countdown=300;
 let priceChart=null,depthChart=null,histChart=null,countdownInterval=null;
 const REFRESH_INTERVAL=300; // 5 minutes to match GitHub Actions
@@ -248,9 +252,14 @@ function calcMarketPct(o){const fp=latestPrices[COIN_GECKO_IDS[o.coin_from]],tp=
 
 function getFilteredOffers(){
   let o=[...allOffers];
+  if(searchQuery){const q=searchQuery.toLowerCase();o=o.filter(x=>(x.msg_id||'').toLowerCase().includes(q)||(x.addr_from||'').toLowerCase().includes(q));}
   if(selectedCoin!=='ALL') o=o.filter(x=>x.coin_from===selectedCoin||x.coin_to===selectedCoin);
   if(selectedPair!=='ALL'){const[b,q]=selectedPair.split('/');o=o.filter(x=>(x.coin_from===b&&x.coin_to===q)||(x.coin_from===q&&x.coin_to===b));}
   return o;
+}
+function onSearchChange(){
+  searchQuery=document.getElementById('search-id').value.trim();
+  renderAllOrders();
 }
 function getPairs(){
   const s=new Set();allOffers.forEach(o=>{const a=o.coin_from,b=o.coin_to;s.add(a<b?a+'/'+b:b+'/'+a);});return[...s].sort();
@@ -376,7 +385,7 @@ function renderAllOrders(){
     const rowCls=`text-gray-700 dark:text-gray-100 hover:bg-coolGray-200 dark:hover:bg-bsx-600 border-b border-gray-200 dark:border-white/5${isBest?' best-deal':''}`;
     const expireHtml=tl>0?formatDuration(tl)+expireWarn:'<span class="text-red-400">Expired</span>';
     return`<tr class="${rowCls}">
-      <td class="desk-cell py-3 pl-3 pr-2 text-xs whitespace-nowrap"><div class="flex items-center gap-2"><svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24"><g stroke-linecap="round" stroke-width="2" fill="none" stroke="${sc}" stroke-linejoin="round"><circle cx="12" cy="12" r="11"/><polyline points="12,6 12,12 18,12" stroke="${sc}"/></g></svg><div><div class="text-xs dark:text-gray-100"><span class="bold">Posted:</span> ${ps}${newBadge}</div><div class="text-xs text-gray-500 dark:text-gray-400"><span class="bold">Expires:</span> ${expireHtml}</div></div></div></td>
+      <td class="desk-cell py-3 pl-3 pr-2 text-xs whitespace-nowrap"><div class="flex items-center gap-2"><svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24"><g stroke-linecap="round" stroke-width="2" fill="none" stroke="${sc}" stroke-linejoin="round"><circle cx="12" cy="12" r="11"/><polyline points="12,6 12,12 18,12" stroke="${sc}"/></g></svg><div><div class="text-xs dark:text-gray-100"><span class="bold">Posted:</span> ${ps}${newBadge}</div><div class="text-xs text-gray-500 dark:text-gray-400"><span class="bold">Expires:</span> ${expireHtml}</div><div class="text-xs text-gray-400 dark:text-gray-500 monospace" title="SMSG: ${o.msg_id||''}\nAddr: ${o.addr_from||''}">${(o.msg_id||'').slice(0,10)}… <span class="text-blue-400">${(o.addr_from||'').slice(0,8)}…</span></div></div></div></td>
       <td class="desk-cell py-0"><div class="py-2 px-3 text-left monospace"><div class="text-sm font-semibold text-gray-800 dark:text-white">${at.toFixed(4)} <span class="text-xs font-normal text-gray-500 dark:text-gray-400">${ts}</span></div>${usdToStr?'<div class="text-xs text-gray-400 dark:text-gray-500">'+usdToStr+'</div>':''}</div></td>
       <td class="desk-cell py-0 px-0 text-center"><div class="flex items-center justify-evenly"><img class="h-10" src="images/coins/${ti}" alt="${td}" onerror="this.style.display='none'"><svg class="w-5 h-5 mx-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" class="text-gray-400 dark:text-gray-300"/></svg><img class="h-10" src="images/coins/${fi}" alt="${fd}" onerror="this.style.display='none'"></div></td>
       <td class="desk-cell p-0"><div class="py-2 px-3 text-right monospace"><div class="text-sm font-semibold text-gray-800 dark:text-white">${af.toFixed(4)} <span class="text-xs font-normal text-gray-500 dark:text-gray-400">${fs}</span></div>${usdFromStr?'<div class="text-xs text-gray-400 dark:text-gray-500">'+usdFromStr+'</div>':''}</div></td>
@@ -419,6 +428,10 @@ function renderAllOrders(){
           <div class="flex items-center justify-between text-xs monospace">
             <span class="text-gray-500 dark:text-gray-400">${expireHtml}</span>
             <span class="text-gray-700 dark:text-gray-200">${ru} <span class="text-gray-400 dark:text-gray-500">· ${rate.toFixed(6)} ${ts}/${fs}</span></span>
+          </div>
+          <div class="text-xs monospace text-gray-400 dark:text-gray-500 mt-1.5 pt-1.5 border-t border-gray-100 dark:border-white/5">
+            <div class="truncate" title="${o.msg_id||''}">ID: ${o.msg_id||''}</div>
+            ${o.addr_from?'<div class="truncate text-blue-400" title="'+o.addr_from+'">Addr: '+o.addr_from+'</div>':''}
           </div>
         </div>
       </td>
