@@ -3,10 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Live BasicSwap DEX orderbook scraped directly from the Particl SMSG network. Cross-chain atomic swaps for BTC, XMR, LTC, PART and more.">
+  <meta name="theme-color" content="#1a202c">
+  <meta property="og:title" content="BasicSwap DEX – Live Markets">
+  <meta property="og:description" content="Real-time peer-to-peer atomic-swap orderbook.">
   <title>BasicSwap DEX - Markets</title>
   <link rel="icon" type="image/svg+xml" href="images/logos/basicswap-logo.svg">
+  <link rel="manifest" href="manifest.webmanifest">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <!-- Lucide: lightweight, consistent SVG icon set. Replaces emoji + hand-rolled SVGs.
+       `lucide.createIcons()` swaps every <i data-lucide="..."> with a real <svg>; we re-run
+       it after each major render (see redrawIcons() in app.js). -->
+  <script src="https://unpkg.com/lucide@latest" defer></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
@@ -15,6 +24,11 @@
         bsx: { 400: '#3d485b', 500: '#232b3a', 600: '#1e2431', 700: '#1a202c' },
       }}}
     }
+  </script>
+  <script>
+    // Inline FOUC guard: app.js is deferred, so apply the persisted theme synchronously here
+    // before first paint. Mirrors the bsx-theme key written by toggleTheme().
+    try{if(localStorage.getItem('bsx-theme')==='light')document.documentElement.classList.remove('dark');}catch(e){}
   </script>
   <style>
     .monospace{font-family:'SF Mono','Fira Code','Cascadia Code',ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
@@ -36,6 +50,134 @@
     .filter-btn{color:#374151;border-color:#d1d5db}
     .dark .filter-btn{color:#d1d5db;border-color:#3d485b}
     .filter-btn.active{color:#93c5fd!important;border-color:#3b82f6!important;background:rgba(59,130,246,.15)!important}
+    /* Sticky filter bar so filters remain reachable while scrolling the orders table */
+    .sticky-filters{position:sticky;top:0;z-index:30;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+    .sticky-filters.is-stuck{box-shadow:0 2px 8px rgba(0,0,0,.25)}
+    /* Color-blind safe palette (deuteranopia-friendly): green→blue, red→orange. Activated by
+       the `cb-safe` class on <html>, persisted as bsx-cb-safe in localStorage. We override only
+       the four most signal-bearing utilities (text-green-400, text-red-400 + their 300 variants
+       and background-color twins); the rest of the UI is already color-blind safe. */
+    html.cb-safe .text-green-400,html.cb-safe #buysell-wrap .text-green-400,html.cb-safe .text-green-300{color:#60a5fa!important}
+    html.cb-safe .text-red-400,html.cb-safe #buysell-wrap .text-red-400,html.cb-safe .text-red-300{color:#f97316!important}
+    html.cb-safe .bg-green-500,html.cb-safe .bg-green-900\/30{background:rgba(96,165,250,.18)!important;border-color:rgba(96,165,250,.35)!important}
+    html.cb-safe .bg-red-900\/30{background:rgba(249,115,22,.14)!important;border-color:rgba(249,115,22,.35)!important}
+    html.cb-safe .badge-new{background:#60a5fa!important}
+    html.cb-safe .best-deal{background:rgba(96,165,250,.08)!important;border-left-color:#60a5fa!important}
+    /* Section heading: subtle uppercase divider above each panel */
+    .section-h{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b7280}
+    .dark .section-h{color:#9ca3af}
+    /* Collapsible sections: clickable header w/ chevron; body hidden when collapsed */
+    .collapsible-section .section-h{cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px}
+    .collapsible-section .section-h:hover{color:#3b82f6}
+    .collapsible-section .section-h .chev{display:inline-flex;align-items:center;transition:transform .15s;width:16px;height:16px}
+    .collapsible-section.section-collapsed .section-h .chev{transform:rotate(-90deg)}
+    .collapsible-section.section-collapsed .collapsible-body{display:none!important}
+    /* Stat chip used in the top scorecard */
+    .stat-chip{display:inline-flex;flex-direction:column;padding:6px 10px;border-radius:8px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.18);min-width:88px}
+    .dark .stat-chip{background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.22)}
+    .stat-chip .lbl{font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em}
+    .dark .stat-chip .lbl{color:#9ca3af}
+    .stat-chip .val{font-family:'SF Mono',ui-monospace,Menlo,Monaco,monospace;font-weight:700;font-size:14px;line-height:1.2}
+    .stat-chip.warn{background:rgba(245,158,11,.10);border-color:rgba(245,158,11,.30)}
+    .stat-chip.warn .val{color:#f59e0b}
+    .stat-chip.danger{background:rgba(239,68,68,.10);border-color:rgba(239,68,68,.30)}
+    .stat-chip.danger .val{color:#ef4444}
+    .stat-chip.ok .val{color:#10b981}
+    /* Watchlist star */
+    .watch-star{cursor:pointer;line-height:1;font-size:14px;color:#9ca3af;transition:color .15s,transform .15s}
+    .watch-star:hover{transform:scale(1.2)}
+    .watch-star.on{color:#fbbf24}
+    /* Per-pair rate-alert bell (next to the watch star in ticker cards). Filled blue when set. */
+    .rate-bell{cursor:pointer;line-height:1;color:#9ca3af;transition:color .15s,transform .15s;margin-left:2px}
+    .rate-bell:hover{transform:scale(1.2);color:#60a5fa}
+    .rate-bell.on{color:#60a5fa}
+    /* Fallback chip rendered when a coin icon PNG is missing (e.g. NAV) — keeps row alignment intact. */
+    .coin-fallback{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;background:#475569;color:#fff;font-weight:700;line-height:1;flex-shrink:0;vertical-align:middle;letter-spacing:-.02em}
+    html:not(.dark) .coin-fallback{background:#94a3b8}
+    /* Reserve a fixed slot for the sort arrow so clicking a header doesn't shift column widths
+       (active col gains ↓/↑, others lose theirs; without a fixed slot the layout reflows). */
+    .sort-icon{display:inline-block;width:.9em;min-width:.9em;text-align:center;line-height:1;flex:0 0 auto;color:#9ca3af}
+    /* Active sort header: bolder, blue arrow + blue label so the current sort axis is obvious. */
+    .sort-icon-active{color:#60a5fa;font-weight:700}
+    .sort-th-active span:first-child{color:#60a5fa!important}
+    html:not(.dark) .sort-icon-active{color:#1d4ed8}
+    html:not(.dark) .sort-th-active span:first-child{color:#1d4ed8!important}
+    /* Compact density mode for the orders table */
+    .compact #orders-table tbody td{padding-top:6px!important;padding-bottom:6px!important}
+    .compact #orders-table tbody td .text-sm{font-size:12px!important}
+    .compact #buysell-wrap td{padding-top:2px!important;padding-bottom:2px!important;font-size:10px!important}
+    /* Lite layout: orderbook-table-only view; persists in localStorage as bsx-lite. */
+    body.lite #scorecard-row,body.lite .collapsible-section{display:none!important}
+    body.lite #lite-toggle{color:#3b82f6;font-weight:600}
+    /* Negotiable badge */
+    .neg-badge{display:inline-block;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;background:rgba(168,85,247,.18);color:#c084fc;border:1px solid rgba(168,85,247,.35);margin-left:3px}
+    /* Variant colours for offerExtraBadges() — overrides neg-badge defaults via higher specificity */
+    .neg-badge.badge-lock{background:rgba(59,130,246,.18);color:#93c5fd;border-color:rgba(59,130,246,.35)}
+    .neg-badge.badge-fee{background:rgba(16,185,129,.18);color:#6ee7b7;border-color:rgba(16,185,129,.35)}
+    .neg-badge.badge-auto{background:rgba(168,85,247,.18);color:#c084fc;border-color:rgba(168,85,247,.35)}
+    .neg-badge.badge-min{background:rgba(99,102,241,.18);color:#a5b4fc;border-color:rgba(99,102,241,.35)}
+    .neg-badge.badge-proof{background:rgba(245,158,11,.18);color:#fcd34d;border-color:rgba(245,158,11,.35)}
+    /* Swap-type chip used in the orders table (replaces inline Tailwind blue-400 utilities) */
+    .swap-type-chip{display:inline-block;padding:4px 8px;font-size:12px;font-weight:500;border-radius:4px;background:rgba(59,130,246,.18);color:#93c5fd;border:1px solid rgba(59,130,246,.35);line-height:1.2;white-space:nowrap}
+    .swap-type-chip.sm{padding:2px 6px;font-size:11px}
+    /* Cap the Swap Type column width so its extra badges stack vertically instead of pushing
+       the column off-screen. The inner stack carries the max-width; the cell itself can't, because
+       #orders-table is sized with min-width:max-content (Tailwind min-w-max). */
+    .swap-type-stack{max-width:220px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:4px}
+    .swap-type-badges{display:flex;flex-wrap:wrap;gap:3px;justify-content:center}
+    .swap-type-badges .neg-badge{margin-left:0}
+    /* Bid-count badge: shown when scraper has observed BID messages targeting this offer */
+    .badge-bid{background:rgba(34,197,94,.18);color:#86efac;border:1px solid rgba(34,197,94,.35);font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;margin-left:4px}
+    /* Expired offer row: subtle de-emphasis only — readable without hover. */
+    #orders-table tbody tr.row-expired td{color:#94a3b8}
+    html.dark #orders-table tbody tr.row-expired td{color:#64748b}
+    #orders-table tbody tr.row-expired td .text-gray-800,
+    #orders-table tbody tr.row-expired td .dark\:text-white{color:inherit!important;font-weight:500!important}
+    /* Stale data banner */
+    .stale-banner{background:linear-gradient(90deg,rgba(245,158,11,.15),rgba(239,68,68,.10));border-bottom:1px solid rgba(245,158,11,.35)}
+    .sticky-filters{top:0}
+    /* Watchlist conflict banner shown when "Watched only" hides the actively-selected pair */
+    .filter-conflict{background:rgba(245,158,11,.10);border:1px solid rgba(245,158,11,.30);color:#fbbf24;padding:2px 8px;border-radius:4px;font-size:11px}
+    /* Stat chip drill-down hover affordance */
+    .stat-chip[data-action]{cursor:pointer}
+    .stat-chip[data-action]:hover{filter:brightness(1.15)}
+    /* Modal (walk-the-book) */
+    .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:60;display:flex;align-items:center;justify-content:center;padding:16px}
+    .modal-card{background:#1a202c;color:#e5e7eb;border:1px solid #3d485b;border-radius:8px;max-width:560px;width:100%;padding:18px;font-size:13px;position:relative}
+    /* Top-right X close affordance — present on every modal for consistent dismiss UX */
+    .modal-x{position:absolute;top:6px;right:8px;width:24px;height:24px;border:none;background:transparent;color:#9ca3af;font-size:20px;line-height:1;cursor:pointer;border-radius:4px}
+    .modal-x:hover{color:#fff;background:rgba(255,255,255,.08)}
+    html:not(.dark) .modal-x{color:#6b7280}
+    html:not(.dark) .modal-x:hover{color:#1f2937;background:rgba(0,0,0,.06)}
+    html:not(.dark) .modal-card{background:#fff;color:#1f2937;border-color:#d1d5db}
+    .modal-card h3{font-size:15px;font-weight:700;margin-bottom:8px}
+    /* Inline jargon-help affordance: small ⓘ glyph next to potentially-confusing terms. Click
+       triggers explainTerm() via data-action="explain" + data-explain="<key>" delegated handler. */
+    .explain-i{display:inline-block;width:14px;height:14px;line-height:14px;text-align:center;border-radius:50%;font-size:10px;cursor:help;color:#9ca3af;opacity:.65;font-weight:normal;position:relative}
+    .explain-i:hover{color:#60a5fa;opacity:1;background:rgba(96,165,250,.12)}
+    /* CSS-only tooltip popover. data-tip is populated at startup from TERM_EXPLAIN so the
+       hover text is the real explanation rather than the generic "What is this?" title. */
+    .explain-i[data-tip]:hover::after{content:attr(data-tip);position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#1f2937;color:#e5e7eb;font-size:11px;font-weight:400;line-height:1.45;padding:8px 10px;border-radius:6px;width:260px;max-width:80vw;text-align:left;white-space:normal;box-shadow:0 6px 16px rgba(0,0,0,.35);z-index:60;pointer-events:none;text-transform:none;letter-spacing:normal;border:1px solid rgba(255,255,255,.08)}
+    .explain-i[data-tip]:hover::before{content:'';position:absolute;top:calc(100% + 2px);left:50%;transform:translateX(-50%);border:6px solid transparent;border-bottom-color:#1f2937;z-index:60;pointer-events:none}
+    html:not(.dark) .explain-i[data-tip]:hover::after{background:#1f2937;color:#f3f4f6;border-color:rgba(0,0,0,.1)}
+    html:not(.dark) .explain-i[data-tip]:hover::before{border-bottom-color:#1f2937}
+    .modal-card label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:#9ca3af;margin-bottom:8px}
+    .modal-card input,.modal-card select{background:#232b3a;color:#fff;border:1px solid #3d485b;border-radius:4px;padding:4px 8px;font-size:12px}
+    html:not(.dark) .modal-card input,html:not(.dark) .modal-card select{background:#fff;color:#1f2937;border-color:#d1d5db}
+    /* Table-based modal rows: keep the divider but let native <th>/<td> alignment drive
+       column layout. (Previous display:flex collapsed multi-column leaderboard tables.) */
+    .modal-card .row{border-bottom:1px solid #2d3748}
+    .modal-card .row td{padding:4px 8px;vertical-align:middle}
+    .modal-card table{border-collapse:collapse;width:100%}
+    .modal-card table thead th{padding:4px 8px;border-bottom:1px solid #2d3748;font-weight:600}
+    html:not(.dark) .modal-card .row,html:not(.dark) .modal-card table thead th{border-color:#e5e7eb}
+    /* Activity heatmap: highlight the active cell + give clickable affordance. */
+    #activity-grid td.cell-cell{cursor:pointer;transition:filter .12s,outline-color .12s;outline:1px solid transparent}
+    #activity-grid td.cell-cell:hover{filter:brightness(1.15)}
+    #activity-grid td.cell-active{outline:1.5px solid #f59e0b;outline-offset:-1px}
+    /* Posted-time filter chip (shown next to the search/filter row when active). */
+    .posted-chip{display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,.18);color:#f59e0b;border:1px solid rgba(245,158,11,.45);padding:2px 8px;border-radius:9999px;font-size:11px;cursor:pointer}
+    .posted-chip:hover{background:rgba(245,158,11,.28)}
     /* Mobile */
     @media(max-width:768px){
       .desktop-only{display:none!important}
@@ -48,12 +190,68 @@
       #orders-table tbody td.desk-cell{display:none!important}
       #orders-table tbody td.mob-card-wrap{display:block!important}
       .heatmap-cell{min-width:36px;padding:4px;font-size:9px}
+      .stat-chip{min-width:72px;padding:4px 8px}
+      .stat-chip .val{font-size:12px}
+      /* Modal: full-width with safe-area insets so the X stays tappable inside the viewport. */
+      .modal-bg{padding:8px!important}
+      .modal-card{max-height:calc(100vh - 16px)!important;overflow-y:auto!important;padding:14px!important}
+      .modal-card h3{font-size:14px}
+      /* Spread mini-chart: shrink so the spread bar doesn't horizontally overflow. */
+      #spread-mini{width:100%!important;max-width:280px}
+      /* "More filters" disclosure: stack contents vertically so each toggle is full-width tappable. */
+      #more-filters-wrap[open] > div{flex-direction:column!important;align-items:flex-start!important;gap:6px!important}
+      /* Activity feed rows: drop the fixed-width columns that overflow on a phone. */
+      #feed-body .row{flex-wrap:wrap!important}
+      #feed-body .row > span{width:auto!important}
+      /* Touch targets: bump help-icon hit area so they're not finger-too-thin. */
+      .explain-i{width:18px;height:18px;line-height:18px}
+      /* Activity heatmap: drop weekend rows? No — instead reduce hour cells so all 24 fit. */
+      #activity-grid td.cell-cell{min-width:14px;padding:1px 2px;font-size:8px}
     }
     @media(min-width:769px){
       .mobile-only{display:none!important}
       .mob-card-wrap{display:none!important}
     }
     .-translate-y-1\/2{-webkit-transform:translateY(-50%);transform:translateY(-50%)}
+    /* Light-theme polish: tighten contrast on badges, chips, and muted rows that were tuned for the dark palette. */
+    html:not(.dark) .badge-bid{background:rgba(22,163,74,.12);color:#15803d;border-color:rgba(22,163,74,.45)}
+    html:not(.dark) .neg-badge{background:rgba(147,51,234,.10);color:#7e22ce;border-color:rgba(147,51,234,.40)}
+    html:not(.dark) .neg-badge.badge-lock{background:rgba(59,130,246,.10);color:#1d4ed8;border-color:rgba(59,130,246,.45)}
+    html:not(.dark) .neg-badge.badge-fee{background:rgba(16,185,129,.10);color:#047857;border-color:rgba(16,185,129,.45)}
+    html:not(.dark) .neg-badge.badge-auto{background:rgba(168,85,247,.10);color:#7e22ce;border-color:rgba(168,85,247,.45)}
+    html:not(.dark) .neg-badge.badge-min{background:rgba(99,102,241,.10);color:#4338ca;border-color:rgba(99,102,241,.45)}
+    html:not(.dark) .neg-badge.badge-proof{background:rgba(245,158,11,.10);color:#b45309;border-color:rgba(245,158,11,.45)}
+    /* Print: strip chrome, leave only the orders table on a clean white page. */
+    @media print{
+      body{background:#fff!important;color:#000!important}
+      nav,header,footer,button,select,input,.sticky-filters,#scorecard-row,#refresh-info,#stale-banner,#modal-root,.collapsible-section{display:none!important}
+      #orders-table{font-size:10px}
+      #orders-table .mob-card-wrap{display:none!important}
+      #orders-table th,#orders-table td{color:#000!important;background:#fff!important;border-color:#e5e7eb!important}
+    }
+    html:not(.dark) .swap-type-chip{background:rgba(59,130,246,.10);color:#1d4ed8;border-color:rgba(59,130,246,.45)}
+    html:not(.dark) .filter-conflict{background:rgba(245,158,11,.14);border-color:rgba(217,119,6,.45);color:#b45309}
+    html:not(.dark) #orders-table tbody tr.row-expired td{color:#64748b}
+    html:not(.dark) .stat-chip .lbl{color:#4b5563}
+    html:not(.dark) .section-h{color:#4b5563}
+    html:not(.dark) .heatmap-cell:hover{box-shadow:0 2px 8px rgba(15,23,42,.18)}
+    html:not(.dark) .filter-btn.active{color:#1d4ed8!important;background:rgba(59,130,246,.10)!important}
+    html:not(.dark) .stat-chip[data-action]:hover{filter:brightness(.97)}
+    /* Light-theme: lift Tailwind 400-shade text/badges to 600/700 shades for adequate contrast on white. */
+    html:not(.dark) #pair-select,html:not(.dark) #swap-type-filter{background:#fff!important;color:#1f2937!important;border-color:#d1d5db!important}
+    html:not(.dark) #pair-select + svg,html:not(.dark) #swap-type-filter + svg{color:#6b7280!important}
+    html:not(.dark) .sticky-filters label.text-gray-500{color:#374151}
+    html:not(.dark) .text-gray-400{color:#6b7280}
+    html:not(.dark) #spread-bar .text-green-400,html:not(.dark) #buysell-wrap .text-green-400,html:not(.dark) #buysell-wrap .text-green-300{color:#15803d}
+    html:not(.dark) #spread-bar .text-red-400,html:not(.dark) #buysell-wrap .text-red-400,html:not(.dark) #buysell-wrap .text-red-300{color:#b91c1c}
+    html:not(.dark) #spread-bar .text-yellow-400{color:#a16207}
+    html:not(.dark) #spread-bar .text-blue-400{color:#1d4ed8}
+    html:not(.dark) #spread-bar .text-orange-400{color:#c2410c}
+    html:not(.dark) #buysell-wrap .bg-green-900\/30{background:rgba(22,163,74,.10);border-color:rgba(22,163,74,.30)}
+    html:not(.dark) #buysell-wrap .bg-red-900\/30{background:rgba(220,38,38,.10);border-color:rgba(220,38,38,.30)}
+    html:not(.dark) footer .text-blue-400{color:#1d4ed8}
+    html:not(.dark) footer .text-red-400{color:#b91c1c}
+    html:not(.dark) footer .text-gray-500{color:#4b5563}
   </style>
 </head>
 <body class="bg-coolGray-100 dark:bg-bsx-700 min-h-screen text-gray-700 dark:text-gray-200">
@@ -73,39 +271,160 @@
         <span class="text-gray-300 desktop-only">Updated <span id="refresh-ago">—</span></span>
         <span id="refresh-countdown" class="text-gray-400 text-xs">(5:00)</span>
       </div>
-      <button onclick="manualRefresh()" class="p-1.5 rounded text-gray-300 hover:text-white hover:bg-bsx-500 transition" title="Refresh now">
-        <svg id="refreshSpinner" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+      <button onclick="manualRefresh()" aria-label="Refresh orderbook" class="p-1.5 rounded text-gray-300 hover:text-white hover:bg-bsx-500 transition" title="Refresh now (R)">
+        <i id="refreshSpinner" data-lucide="refresh-cw" class="w-4 h-4"></i>
       </button>
-      <button onclick="toggleTheme()" class="p-1.5 rounded text-gray-300 hover:text-white hover:bg-bsx-500 transition">
-        <svg class="w-4 h-4 hidden dark:block" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"/></svg>
-        <svg class="w-4 h-4 block dark:hidden" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/></svg>
+      <button onclick="openWalkBook()" aria-label="Walk-the-book calculator" class="p-1.5 rounded text-gray-300 hover:text-white hover:bg-bsx-500 transition desktop-only" title="Walk-the-book calculator (W)">
+        <i data-lucide="calculator" class="w-4 h-4"></i>
+      </button>
+      <button onclick="openHelp()" aria-label="Keyboard shortcuts" class="p-1.5 rounded text-gray-300 hover:text-white hover:bg-bsx-500 transition desktop-only" title="Keyboard shortcuts (?)">
+        <i data-lucide="help-circle" class="w-4 h-4"></i>
+      </button>
+      <a href="https://basicswapdex.com" target="_blank" rel="noopener noreferrer" class="bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold px-3 py-1.5 rounded transition desktop-only inline-flex items-center gap-1" title="Download BasicSwap from basicswapdex.com">Get BasicSwap <i data-lucide="external-link" class="w-3 h-3"></i></a>
+      <button onclick="toggleTheme()" aria-label="Toggle dark mode" class="p-1.5 rounded text-gray-300 hover:text-white hover:bg-bsx-500 transition">
+        <i data-lucide="moon" class="w-4 h-4 hidden dark:inline-block"></i>
+        <i data-lucide="sun" class="w-4 h-4 inline-block dark:hidden"></i>
       </button>
     </div>
   </div>
 </nav>
 
-<!-- Filters -->
-<div class="w-full px-4 pt-4 pb-2">
+<!-- Stale-data banner removed from public UI; the snapshot-age chip already
+     conveys freshness. renderStaleBanner() in app.js no-ops without #stale-banner. -->
+
+<!-- Top scorecard: at-a-glance Network Pulse + 24h activity, visible above the fold -->
+<div class="w-full px-4 pt-3 pb-1" id="scorecard-row">
+  <div class="flex flex-wrap items-stretch gap-2">
+    <div class="stat-chip ok" data-action="scroll-table" title="Scroll to orders table"><span class="lbl">Active offers</span><span class="val" id="sc-active">—</span></div>
+    <div class="stat-chip" data-action="scroll-table"><span class="lbl">Listed offers</span><span class="val" id="sc-listed">—</span></div>
+    <div class="stat-chip" data-action="open-pairs" title="Open pair selector"><span class="lbl">Pairs</span><span class="val" id="sc-pairs">—</span></div>
+    <div class="stat-chip" data-action="leaderboard" title="Open maker leaderboard"><span class="lbl">Unique makers</span><span class="val" id="sc-makers">—</span></div>
+    <div class="stat-chip"><span class="lbl">Listed liquidity</span><span class="val" id="sc-liquidity">—</span></div>
+    <div class="stat-chip ok" id="sc-new-chip"><span class="lbl">New (1h / 24h)</span><span class="val"><span id="sc-new-1h">—</span> / <span id="sc-new-24h">—</span></span></div>
+    <div class="stat-chip" id="sc-vol-delta-chip"><span class="lbl">Vol Δ 24h</span><span class="val" id="sc-vol-delta">—</span></div>
+    <div class="stat-chip" id="sc-snap-chip" data-action="snap-info" title="Time since orderbook.json snapshot. Next refresh estimated from the GitHub Action 15-minute cron."><span class="lbl">Snapshot age</span><span class="val" id="sc-snap-age">—</span><span class="lbl" style="margin-left:6px">· next</span><span class="val" id="sc-next-refresh" style="font-size:11px">—</span></div>
+    <div class="stat-chip"><span class="lbl" title="SMSGs received from Particl peer">SMSGs in</span><span class="val" id="sc-recv">—</span></div>
+    <div class="stat-chip ok"><span class="lbl" title="SMSGs successfully decrypted with the BSX network key">BSX msgs</span><span class="val" id="sc-dec">—</span></div>
+    <div class="stat-chip" data-action="explain-foreign"><span class="lbl" title="SMSGs encrypted to other recipients (private chat or other apps); not addressable by BSX">Foreign SMSGs <span style="opacity:.5">ⓘ</span></span><span class="val" id="sc-foreign">—</span></div>
+    <div class="stat-chip warn" id="sc-parse-chip" style="display:none"><span class="lbl" title="BSX-decrypted messages whose payload failed to parse">Parse errors</span><span class="val" id="sc-parse">—</span></div>
+    <div class="stat-chip" id="sc-bids-chip" style="display:none"><span class="lbl" title="Non-OFFER BSX messages: bids, accepts, revokes, XMR-flow messages">Bids / accepts</span><span class="val"><span id="sc-bids">—</span> / <span id="sc-accepts">—</span></span></div>
+    <div class="stat-chip" id="sc-arb-chip" data-action="scroll-arb" title="Best triangular cycle edge in this snapshot. tight = fees-dominated (healthy book); loose = potential arb (rare)."><span class="lbl">Market efficiency</span><span class="val" id="sc-arb-val">—</span></div>
+  </div>
+</div>
+
+<!-- Filters (sticky) -->
+<div class="sticky-filters bg-coolGray-100 dark:bg-bsx-700 w-full px-4 pt-3 pb-2 border-b border-gray-200 dark:border-bsx-400" id="filter-wrap">
   <div class="flex flex-wrap items-center gap-3 mb-2">
     <div class="relative">
-      <select id="pair-select" onchange="onPairChange(this.value)" class="bg-bsx-600 text-white text-sm rounded px-3 py-1.5 pr-8 border border-bsx-400 focus:ring-0 focus:outline-none appearance-none cursor-pointer"><option value="ALL">All Pairs</option></select>
+      <select id="pair-select" aria-label="Select trading pair" onchange="onPairChange(this.value)" class="bg-bsx-600 text-white text-sm rounded px-3 py-1.5 pr-8 border border-bsx-400 focus:ring-0 focus:outline-none appearance-none cursor-pointer"><option value="ALL">All Pairs</option></select>
       <svg class="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
     </div>
     <button class="filter-btn active px-3 py-1.5 text-xs font-semibold rounded border" data-coin="ALL" onclick="setCoinFilter('ALL',this)">All</button>
     <div id="coin-filters" class="flex flex-wrap gap-1.5"></div>
     <div class="relative ml-auto">
-      <input id="search-id" type="text" placeholder="Search ID or address..." oninput="onSearchChange()" class="bg-white dark:bg-bsx-600 text-gray-800 dark:text-gray-200 text-xs rounded px-3 py-1.5 pl-8 border border-gray-300 dark:border-bsx-400 focus:outline-none focus:border-blue-500 w-48 sm:w-64 monospace" spellcheck="false" autocomplete="off">
+      <input id="search-id" type="text" placeholder="Search ID or address... (/ to focus)" aria-label="Search by message ID or maker address" oninput="onSearchChange()" class="bg-white dark:bg-bsx-600 text-gray-800 dark:text-gray-200 text-xs rounded px-3 py-1.5 pl-8 border border-gray-300 dark:border-bsx-400 focus:outline-none focus:border-blue-500 w-48 sm:w-64 monospace" spellcheck="false" autocomplete="off">
       <svg class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
     </div>
   </div>
-  <div id="spread-bar" class="text-xs text-gray-500 dark:text-gray-300" style="display:none">
-    <div class="flex flex-wrap items-center gap-3 mb-1.5">
-      <span>Best Bid: <strong id="best-bid" class="text-green-400 monospace">—</strong></span>
-      <span>Best Ask: <strong id="best-ask" class="text-red-400 monospace">—</strong></span>
-      <span>Spread: <strong id="spread-abs" class="text-yellow-400 monospace">—</strong></span>
-      <span>Spread %: <strong id="spread-pct" class="text-yellow-400 monospace">—</strong></span>
+  <div class="flex flex-wrap items-center gap-3 mb-2">
+    <div class="relative">
+      <select id="swap-type-filter" aria-label="Filter by swap type" onchange="onSwapTypeChange(this.value)" class="bg-bsx-600 text-white text-xs rounded px-2 py-1 pr-7 border border-bsx-400 focus:ring-0 focus:outline-none appearance-none cursor-pointer">
+        <option value="ALL">All Swap Types</option>
+      </select>
+      <svg class="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
     </div>
-    <div class="flex flex-wrap items-center gap-2">
+    <label class="text-xs text-gray-500 dark:text-gray-300 flex items-center gap-1.5" title="Display currency for all fiat figures (sizes, liquidity, walk-book, leaderboard, notifications). CSV/JSON exports stay anchored to USD.">Fiat
+      <select id="fiat-select" onchange="onFiatChange(this.value)" class="bg-white dark:bg-bsx-600 text-gray-800 dark:text-gray-200 text-xs rounded px-2 py-1 border border-gray-300 dark:border-bsx-400 focus:outline-none focus:border-blue-500 cursor-pointer">
+        <optgroup label="Major">
+          <option value="usd">🇺🇸 USD</option>
+          <option value="eur">🇪🇺 EUR</option>
+          <option value="gbp">🇬🇧 GBP</option>
+          <option value="jpy">🇯🇵 JPY</option>
+          <option value="cny">🇨🇳 CNY</option>
+          <option value="chf">🇨🇭 CHF</option>
+        </optgroup>
+        <optgroup label="Americas">
+          <option value="cad">🇨🇦 CAD</option>
+          <option value="mxn">🇲🇽 MXN</option>
+          <option value="brl">🇧🇷 BRL</option>
+          <option value="ars">🇦🇷 ARS</option>
+        </optgroup>
+        <optgroup label="Asia-Pacific">
+          <option value="aud">🇦🇺 AUD</option>
+          <option value="krw">🇰🇷 KRW</option>
+          <option value="inr">🇮🇳 INR</option>
+        </optgroup>
+        <optgroup label="EMEA">
+          <option value="rub">🇷🇺 RUB</option>
+          <option value="try">🇹🇷 TRY</option>
+          <option value="aed">🇦🇪 AED</option>
+          <option value="zar">🇿🇦 ZAR</option>
+          <option value="ngn">🇳🇬 NGN</option>
+        </optgroup>
+        <optgroup label="Crypto &amp; commodities">
+          <option value="btc">₿ BTC</option>
+          <option value="sats">⚡ sats</option>
+          <option value="xau">🥇 Gold (oz)</option>
+          <option value="xag">🥈 Silver (oz)</option>
+        </optgroup>
+      </select>
+    </label>
+    <label class="text-xs text-gray-500 dark:text-gray-300 flex items-center gap-1.5"><span id="min-usd-label">Min size $</span>
+      <input id="min-usd-filter" type="number" min="0" step="10" value="0" oninput="onMinUsdChange(this.value)" class="bg-white dark:bg-bsx-600 text-gray-800 dark:text-gray-200 text-xs rounded px-2 py-1 border border-gray-300 dark:border-bsx-400 focus:outline-none focus:border-blue-500 w-20 monospace" spellcheck="false">
+    </label>
+    <button onclick="clearFilters()" aria-label="Clear all filters" class="text-xs text-gray-500 dark:text-gray-400 hover:text-blue-400 underline" title="Reset all filters (X)">Clear filters</button>
+    <!-- Secondary filters collapsed behind a disclosure to keep the primary bar legible.
+         Active-count badge mirrors moreFiltersActiveCount() in app.js. -->
+    <details id="more-filters-wrap" class="text-xs">
+      <summary class="cursor-pointer text-gray-500 dark:text-gray-300 hover:text-blue-400 inline-flex items-center gap-1 select-none list-none" title="Show secondary filters"><i data-lucide="sliders-horizontal" class="w-3.5 h-3.5"></i> More filters<span id="more-filters-badge" class="text-blue-400" style="display:none"></span></summary>
+      <div class="flex flex-wrap items-center gap-3 mt-2 pl-2 border-l border-gray-300 dark:border-bsx-400">
+        <label class="text-xs text-gray-500 dark:text-gray-300 flex items-center gap-1.5 cursor-pointer" title="Show only offers with negotiable price or amount">
+          <input id="negotiable-filter" type="checkbox" onchange="onNegotiableChange(this.checked)" class="cursor-pointer">
+          Negotiable only
+        </label>
+        <label class="text-xs text-gray-500 dark:text-gray-300 flex items-center gap-1.5 cursor-pointer" title="Show only offers whose maker auto-accepts bids (instant-fill, no manual approval)">
+          <input id="autoaccept-filter" type="checkbox" onchange="onAutoAcceptChange(this.checked)" class="cursor-pointer">
+          Auto-accept only
+        </label>
+        <label class="text-xs text-gray-500 dark:text-gray-300 flex items-center gap-1.5 cursor-pointer" title="Show only watched (starred) pairs">
+          <input id="watched-filter" type="checkbox" onchange="onWatchedChange(this.checked)" class="cursor-pointer">
+          <i data-lucide="star" class="w-3.5 h-3.5"></i> Watched only
+        </label>
+        <label class="text-xs text-gray-500 dark:text-gray-300 flex items-center gap-1.5 cursor-pointer" title="Hide offers whose time_valid window has elapsed">
+          <input id="hide-expired-filter" type="checkbox" onchange="onHideExpiredChange(this.checked)" class="cursor-pointer" checked>
+          Hide expired
+        </label>
+        <label class="text-xs text-gray-500 dark:text-gray-300 flex items-center gap-1.5 cursor-pointer" title="Reduce table row height">
+          <input id="compact-toggle" type="checkbox" onchange="onCompactChange(this.checked)" class="cursor-pointer">
+          Compact
+        </label>
+        <button onclick="toggleLite()" id="lite-toggle" aria-label="Toggle lite mode" class="text-xs text-gray-500 dark:text-gray-400 hover:text-blue-400 underline inline-flex items-center gap-1" title="Lite mode: show only the orders table (L)"><i data-lucide="feather" class="w-3.5 h-3.5"></i> Lite</button>
+      </div>
+    </details>
+    <button onclick="openSettings()" aria-label="Settings" class="text-xs text-gray-500 dark:text-gray-300 hover:text-blue-400 inline-flex items-center gap-1" title="Settings: notifications, palette, rate alerts"><i data-lucide="settings" class="w-3.5 h-3.5"></i> Settings</button>
+    <!-- CSV/JSON export buttons hidden for the public deployment. The exportCsv()/exportJson()
+         helpers in app.js are kept; trigger via the browser console for ad-hoc dumps. -->
+    <!-- <button onclick="exportCsv()" ...>CSV</button> -->
+    <!-- <button onclick="exportJson()" ...>JSON</button> -->
+    <span id="filter-conflict" class="filter-conflict" style="display:none"></span>
+    <span id="posted-filter-chip" class="posted-chip" style="display:none" data-action="clear-posted-filter" title="Clear posted-time filter"></span>
+    <span id="filter-count" class="text-xs text-gray-400 ml-auto"></span>
+  </div>
+  <div id="spread-bar" class="text-xs text-gray-500 dark:text-gray-300" style="display:none">
+    <div id="spread-bid-ask-row" class="flex flex-wrap items-center gap-3 mb-1.5">
+      <span>Best Bid: <strong id="best-bid" class="text-green-400 monospace">—</strong> <span id="best-bid-fiat" class="text-gray-400 dark:text-gray-500"></span></span>
+      <span>Best Ask: <strong id="best-ask" class="text-red-400 monospace">—</strong> <span id="best-ask-fiat" class="text-gray-400 dark:text-gray-500"></span></span>
+      <span>Spread: <strong id="spread-abs" class="text-yellow-400 monospace">—</strong></span>
+      <span>Spread %: <strong id="spread-pct" class="text-yellow-400 monospace" title="Mid-relative spread = (ask − bid) / mid · 100. Industry standard.">—</strong></span>
+      <span id="crossed-warn" class="text-orange-400 font-semibold inline-flex items-center gap-1" style="display:none"><i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Crossed market — possible arbitrage</span>
+      <span id="maker-concentration" class="text-gray-400"></span>
+    </div>
+    <div id="spread-one-side" class="text-orange-400 mb-1.5" style="display:none"></div>
+    <!-- Inline 24h CoinGecko sparkline of the BASE coin (USD). Hollow blue line = spot. Dashed
+         green = current best-bid (USD-equivalent), dashed red = current best-ask. Lets the user
+         eyeball whether the on-chain offers are above/below recent spot range. -->
+    <div id="spread-mini-wrap" class="mb-1.5" style="display:none"><svg id="spread-mini" width="240" height="44" style="overflow:visible"></svg> <span class="text-xs text-gray-400 ml-1">24h spot vs best bid/ask</span></div>
+    <div id="spread-fiat-row" class="flex flex-wrap items-center gap-2">
       <span class="text-gray-400 dark:text-gray-500 text-xs" id="fiat-coin-label">1 BTC =</span>
       <span class="spread-fiat">🇺🇸 <strong id="spread-usd" class="text-blue-400 monospace">—</strong></span>
       <span class="spread-fiat">🇪🇺 <strong id="spread-eur" class="text-blue-400 monospace">—</strong></span>
@@ -117,100 +436,65 @@
   </div>
 </div>
 
-<!-- Pair Summary Ticker -->
-<div class="w-full px-4 pb-3" id="ticker-wrap">
-  <div class="flex flex-wrap gap-2" id="ticker-cards"></div>
-</div>
-
-<!-- Liquidity Heatmap -->
-<div class="w-full pb-3" id="heatmap-wrap" style="display:none">
-  <div class="bg-coolGray-100 dark:bg-bsx-500 px-4 py-3">
-    <span class="text-sm font-semibold dark:text-gray-100 mb-3 block">Liquidity Heatmap <span class="text-xs font-normal text-gray-400">(click a cell to view pair)</span></span>
-    <div class="heatmap-scroll"><div id="heatmap-grid"></div></div>
-  </div>
-</div>
-
-<!-- Charts: Price History + Depth -->
-<div class="w-full px-4 pb-3"><div class="flex mobile-stack gap-3">
-  <div class="flex-1 mobile-full bg-coolGray-100 dark:bg-bsx-500 rounded-lg p-3" id="price-chart-wrap" style="display:none">
-    <div class="flex items-center justify-between mb-2">
-      <span class="text-sm font-semibold dark:text-gray-100">Price History</span>
-      <div class="flex gap-1">
-        <button onclick="fetchPriceHistory('1')" class="ph-btn text-xs px-2 py-0.5 rounded bg-blue-500 text-white" data-d="1">1D</button>
-        <button onclick="fetchPriceHistory('7')" class="ph-btn text-xs px-2 py-0.5 rounded bg-bsx-600 text-gray-300 hover:bg-blue-500 hover:text-white" data-d="7">7D</button>
-        <button onclick="fetchPriceHistory('30')" class="ph-btn text-xs px-2 py-0.5 rounded bg-bsx-600 text-gray-300 hover:bg-blue-500 hover:text-white" data-d="30">30D</button>
+<!-- Buy / Sell Book (auto-expands when a pair is selected). Placed above the orders table
+     so the live aggregated bid/ask view is the first thing visible after picking a pair. -->
+<section id="buysell-wrap" class="collapsible-section w-full px-4 pb-3" style="display:none">
+  <div class="section-h mb-2" onclick="toggleSection('buysell-wrap')"><span class="chev"><i data-lucide="chevron-down" class="w-4 h-4"></i></span>Buy / Sell Book</div>
+  <div class="collapsible-body">
+    <div class="flex mobile-stack gap-3">
+      <div class="flex-1 mobile-full bg-coolGray-100 dark:bg-bsx-500 rounded-lg overflow-hidden">
+        <div class="px-3 py-2 bg-green-900/30 border-b border-green-800/30 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-green-500"></span>
+          <span class="text-sm font-semibold text-green-400">Buy Orders (Bids)</span>
+          <span id="bid-count" class="text-xs text-green-300 ml-auto">0</span>
+        </div>
+        <div class="overflow-auto" style="max-height:300px">
+          <table class="w-full text-xs monospace"><thead>
+            <tr class="text-gray-500 dark:text-gray-300 uppercase">
+              <th class="py-1.5 px-2 text-left font-semibold" id="bid-price-th">Price</th>
+              <th class="py-1.5 px-2 text-right font-semibold" id="bid-amount-th">Amount</th>
+              <th class="py-1.5 px-2 text-right font-semibold" id="bid-total-th">Total</th>
+            </tr></thead><tbody id="bids-body"></tbody>
+          </table>
+        </div>
       </div>
-    </div>
-    <div style="height:200px"><canvas id="priceChart"></canvas></div>
-  </div>
-  <div class="flex-1 mobile-full bg-coolGray-100 dark:bg-bsx-500 rounded-lg p-3" id="depth-chart-wrap" style="display:none">
-    <span class="text-sm font-semibold dark:text-gray-100 mb-2 block">Depth Chart</span>
-    <div style="height:200px"><canvas id="depthChart"></canvas></div>
-  </div>
-</div></div>
-
-<!-- Histogram -->
-<div class="w-full px-4 pb-3" id="histogram-wrap" style="display:none">
-  <div class="bg-coolGray-100 dark:bg-bsx-500 rounded-lg p-3">
-    <span class="text-sm font-semibold dark:text-gray-100 mb-2 block">Order Size Distribution (USD)</span>
-    <div style="height:150px"><canvas id="histogramChart"></canvas></div>
-  </div>
-</div>
-
-<!-- Buy/Sell Book -->
-<div class="w-full px-4 pb-3" id="buysell-wrap" style="display:none">
-  <div class="flex mobile-stack gap-3">
-    <div class="flex-1 mobile-full bg-coolGray-100 dark:bg-bsx-500 rounded-lg overflow-hidden">
-      <div class="px-3 py-2 bg-green-900/30 border-b border-green-800/30 flex items-center gap-2">
-        <span class="w-2 h-2 rounded-full bg-green-500"></span>
-        <span class="text-sm font-semibold text-green-400">Buy Orders (Bids)</span>
-        <span id="bid-count" class="text-xs text-green-300 ml-auto">0</span>
-      </div>
-      <div class="overflow-auto" style="max-height:300px">
-        <table class="w-full text-xs monospace"><thead>
-          <tr class="text-gray-500 dark:text-gray-300 uppercase">
-            <th class="py-1.5 px-2 text-left font-semibold">Price</th>
-            <th class="py-1.5 px-2 text-right font-semibold">Amount</th>
-            <th class="py-1.5 px-2 text-right font-semibold">Total</th>
-          </tr></thead><tbody id="bids-body"></tbody>
-        </table>
-      </div>
-    </div>
-    <div class="flex-1 mobile-full bg-coolGray-100 dark:bg-bsx-500 rounded-lg overflow-hidden">
-      <div class="px-3 py-2 bg-red-900/30 border-b border-red-800/30 flex items-center gap-2">
-        <span class="w-2 h-2 rounded-full bg-red-500"></span>
-        <span class="text-sm font-semibold text-red-400">Sell Orders (Asks)</span>
-        <span id="ask-count" class="text-xs text-red-300 ml-auto">0</span>
-      </div>
-      <div class="overflow-auto" style="max-height:300px">
-        <table class="w-full text-xs monospace"><thead>
-          <tr class="text-gray-500 dark:text-gray-300 uppercase">
-            <th class="py-1.5 px-2 text-left font-semibold">Price</th>
-            <th class="py-1.5 px-2 text-right font-semibold">Amount</th>
-            <th class="py-1.5 px-2 text-right font-semibold">Total</th>
-          </tr></thead><tbody id="asks-body"></tbody>
-        </table>
+      <div class="flex-1 mobile-full bg-coolGray-100 dark:bg-bsx-500 rounded-lg overflow-hidden">
+        <div class="px-3 py-2 bg-red-900/30 border-b border-red-800/30 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-red-500"></span>
+          <span class="text-sm font-semibold text-red-400">Sell Orders (Asks)</span>
+          <span id="ask-count" class="text-xs text-red-300 ml-auto">0</span>
+        </div>
+        <div class="overflow-auto" style="max-height:300px">
+          <table class="w-full text-xs monospace"><thead>
+            <tr class="text-gray-500 dark:text-gray-300 uppercase">
+              <th class="py-1.5 px-2 text-left font-semibold" id="ask-price-th">Price</th>
+              <th class="py-1.5 px-2 text-right font-semibold" id="ask-amount-th">Amount</th>
+              <th class="py-1.5 px-2 text-right font-semibold" id="ask-total-th">Total</th>
+            </tr></thead><tbody id="asks-body"></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
-</div>
+</section>
 
-<!-- All Orders (full-width, no rounded corners) -->
+<!-- All Orders table. Analytics widgets sit below as collapsible sections. -->
 <div class="w-full">
   <div class="bg-coolGray-100 dark:bg-bsx-500">
     <div class="overflow-x-auto">
       <table class="w-full min-w-max" id="orders-table">
         <thead class="uppercase"><tr>
-          <th class="p-0" onclick="sortBy('timestamp')"><div class="py-3 pl-4 bg-coolGray-200 dark:bg-bsx-600 cursor-pointer"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Time</span><span class="sort-icon ml-1 text-gray-500 dark:text-gray-400" id="sort-timestamp">↓</span></div></th>
-          <th class="p-0" onclick="sortBy('amount_to')"><div class="py-3 px-4 bg-coolGray-200 dark:bg-bsx-600 text-left cursor-pointer"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">You Send</span><span class="sort-icon ml-1 text-gray-500 dark:text-gray-400" id="sort-amount_to"></span></div></th>
-          <th class="p-0"><div class="py-3 px-4 bg-coolGray-200 dark:bg-bsx-600 text-center"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Swap</span></div></th>
-          <th class="p-0" onclick="sortBy('amount_from')"><div class="py-3 px-4 bg-coolGray-200 dark:bg-bsx-600 text-right cursor-pointer"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold pr-2">You Get</span><span class="sort-icon ml-1 text-gray-500 dark:text-gray-400" id="sort-amount_from"></span></div></th>
-          <th class="p-0" onclick="sortBy('rate')"><div class="py-3 px-4 bg-coolGray-200 dark:bg-bsx-600 text-right flex items-center justify-end cursor-pointer"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Rate</span><span class="sort-icon ml-1 text-gray-500 dark:text-gray-400" id="sort-rate"></span></div></th>
-          <th class="p-0" onclick="sortBy('market_pct')"><div class="py-3 bg-coolGray-200 dark:bg-bsx-600 text-center flex items-center justify-center cursor-pointer"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Market +/-</span><span class="sort-icon ml-1 text-gray-500 dark:text-gray-400" id="sort-market_pct"></span></div></th>
-          <th class="p-0"><div class="py-3 px-4 bg-coolGray-200 dark:bg-bsx-600"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Swap Type</span></div></th>
+          <th class="p-0" onclick="sortBy('timestamp')"><div class="py-3 px-4 bg-coolGray-200 dark:bg-bsx-600 flex items-center justify-start cursor-pointer"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Time</span><span class="sort-icon ml-1 text-gray-500 dark:text-gray-400" id="sort-timestamp">↓</span></div></th>
+          <th class="p-0" onclick="sortBy('amount_to')"><div class="py-3 px-4 bg-coolGray-200 dark:bg-bsx-600 flex items-center justify-start cursor-pointer"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">You Send</span><span class="sort-icon ml-1 text-gray-500 dark:text-gray-400" id="sort-amount_to"></span></div></th>
+          <th class="p-0"><div class="py-3 px-4 bg-coolGray-200 dark:bg-bsx-600 flex items-center justify-center"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Swap</span><span class="sort-icon ml-1 invisible">·</span></div></th>
+          <th class="p-0" onclick="sortBy('amount_from')"><div class="py-3 px-4 bg-coolGray-200 dark:bg-bsx-600 flex items-center justify-end cursor-pointer"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">You Get</span><span class="sort-icon ml-1 text-gray-500 dark:text-gray-400" id="sort-amount_from"></span></div></th>
+          <th class="p-0" onclick="sortBy('amount_to')"><div class="py-3 px-4 bg-coolGray-200 dark:bg-bsx-600 flex items-center justify-center cursor-pointer"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Est. Cost <span class="text-gray-400 dark:text-gray-500 font-normal" style="font-size:10px">(USD)</span> <span data-action="explain" data-explain="fiat_size" class="explain-i" title="What is this?" onclick="event.stopPropagation();explainTerm('fiat_size')">ⓘ</span></span><span class="sort-icon ml-1 text-gray-500 dark:text-gray-400" id="sort-cost"></span></div></th>
+          <th class="p-0" onclick="sortBy('rate')"><div class="py-3 px-4 bg-coolGray-200 dark:bg-bsx-600 flex items-center justify-end cursor-pointer"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Rate</span><span class="sort-icon ml-1 text-gray-500 dark:text-gray-400" id="sort-rate"></span></div></th>
+          <th class="p-0" onclick="sortBy('market_pct')"><div class="py-3 px-4 bg-coolGray-200 dark:bg-bsx-600 flex items-center justify-center cursor-pointer"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Market +/-</span><span data-action="explain" data-explain="market_pct" class="explain-i ml-1" title="What is this?" onclick="event.stopPropagation();explainTerm('market_pct')">ⓘ</span><span class="sort-icon ml-1 text-gray-500 dark:text-gray-400" id="sort-market_pct"></span></div></th>
+          <th class="p-0"><div class="py-3 px-4 bg-coolGray-200 dark:bg-bsx-600 flex items-center justify-center"><span class="text-sm text-gray-600 dark:text-gray-300 font-semibold">Swap Type</span><span data-action="explain" data-explain="swap_type" class="explain-i ml-1" title="What is this?">ⓘ</span><span class="sort-icon ml-1 invisible">·</span></div></th>
         </tr></thead>
         <tbody id="offers-body">
-          <tr><td colspan="7" class="py-16 text-center text-gray-500 dark:text-gray-300 text-sm">Loading markets...</td></tr>
+          <tr><td colspan="8" class="py-16 text-center text-gray-500 dark:text-gray-300 text-sm">Loading markets...</td></tr>
         </tbody>
       </table>
     </div>
@@ -225,6 +509,111 @@
   </div>
 </div>
 
+<!-- Markets Overview (collapsible, default expanded) -->
+<section id="sec-markets" class="collapsible-section w-full px-4 pt-4 pb-3">
+  <div class="section-h mb-2" onclick="toggleSection('sec-markets')"><span class="chev"><i data-lucide="chevron-down" class="w-4 h-4"></i></span>Markets Overview</div>
+  <div class="collapsible-body">
+    <div class="flex mobile-stack gap-3">
+      <div class="flex-1 mobile-full bg-coolGray-100 dark:bg-bsx-500 rounded-lg p-3" id="heatmap-wrap" style="display:none;min-width:0">
+        <div class="text-sm font-semibold dark:text-gray-100 mb-2">Liquidity Heatmap <span class="text-xs font-normal text-gray-400">(click a cell to view pair)</span></div>
+        <div class="heatmap-scroll"><div id="heatmap-grid"></div></div>
+      </div>
+      <div class="flex-1 mobile-full bg-coolGray-100 dark:bg-bsx-500 rounded-lg p-3" id="ticker-wrap" style="min-width:0">
+        <div class="text-sm font-semibold dark:text-gray-100 mb-2 flex items-center justify-between">
+          <span>Pair Tickers</span>
+          <span class="text-xs font-normal text-gray-400 inline-flex items-center gap-1" title="Star a pair to pin it to the top of this list and (with the Watched only filter) to limit the table to your starred pairs."><i data-lucide="star" class="w-3 h-3"></i> = watch</span>
+        </div>
+        <div class="flex flex-wrap gap-2" id="ticker-cards" style="max-height:340px;overflow-y:auto"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Pair Analytics (collapsible, auto-expands when a pair is selected) -->
+<section id="pair-analytics-h" class="collapsible-section section-collapsed w-full px-4 pb-3" style="display:none">
+  <div class="section-h mb-2" onclick="toggleSection('pair-analytics-h')"><span class="chev"><i data-lucide="chevron-down" class="w-4 h-4"></i></span>Pair Analytics <span id="pair-analytics-pair" class="text-gray-400 normal-case tracking-normal" style="letter-spacing:0"></span></div>
+  <div class="collapsible-body">
+    <div class="flex mobile-stack gap-3">
+      <div class="flex-1 mobile-full bg-coolGray-100 dark:bg-bsx-500 rounded-lg p-3" id="price-chart-wrap" style="display:none">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-sm font-semibold dark:text-gray-100">Price History</span>
+          <div class="flex gap-1">
+            <button onclick="fetchPriceHistory('1')" class="ph-btn text-xs px-2 py-0.5 rounded bg-blue-500 text-white" data-d="1">1D</button>
+            <button onclick="fetchPriceHistory('7')" class="ph-btn text-xs px-2 py-0.5 rounded bg-bsx-600 text-gray-300 hover:bg-blue-500 hover:text-white" data-d="7">7D</button>
+            <button onclick="fetchPriceHistory('30')" class="ph-btn text-xs px-2 py-0.5 rounded bg-bsx-600 text-gray-300 hover:bg-blue-500 hover:text-white" data-d="30">30D</button>
+          </div>
+        </div>
+        <div style="height:200px"><canvas id="priceChart"></canvas></div>
+      </div>
+      <div class="flex-1 mobile-full bg-coolGray-100 dark:bg-bsx-500 rounded-lg p-3" id="depth-chart-wrap" style="display:none">
+        <span class="text-sm font-semibold dark:text-gray-100 mb-2 block">Depth Chart</span>
+        <div style="height:200px"><canvas id="depthChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Order Size Distribution (collapsible, default expanded) -->
+<section id="histogram-wrap" class="collapsible-section w-full px-4 pb-3" style="display:none">
+  <div class="section-h mb-2" onclick="toggleSection('histogram-wrap')"><span class="chev"><i data-lucide="chevron-down" class="w-4 h-4"></i></span>Order Size Distribution <span class="text-xs font-normal text-gray-400 normal-case" style="letter-spacing:0">(USD, priced offers only)</span></div>
+  <div class="collapsible-body">
+    <div class="bg-coolGray-100 dark:bg-bsx-500 rounded-lg p-3">
+      <div style="height:150px"><canvas id="histogramChart"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<!-- Triangular arbitrage (collapsible, hidden entirely until ≥1 cycle exists). -->
+<section id="tri-arb-wrap" class="collapsible-section w-full px-4 pb-3" style="display:none">
+  <div class="section-h mb-2" onclick="toggleSection('tri-arb-wrap')" onclickignore=""><span class="chev"><i data-lucide="chevron-down" class="w-4 h-4"></i></span>Arbitrage Cycles <span class="text-xs font-normal text-gray-400 normal-case" style="letter-spacing:0">(best-of-book, ignores fees &amp; slippage)</span> <span class="text-xs text-gray-400 ml-auto" id="tri-arb-count"></span></div>
+  <div class="collapsible-body">
+    <div class="bg-coolGray-100 dark:bg-bsx-500 rounded-lg p-3">
+      <!-- Min edge selector + 4-hop toggle. Clicks are stopped from bubbling into the section header so they don't collapse the panel. -->
+      <div class="flex flex-wrap items-center gap-3 mb-2 text-xs text-gray-500 dark:text-gray-300" onclick="event.stopPropagation()">
+        <label class="flex items-center gap-1.5">Min edge:
+          <select id="arb-edge-min" onchange="onArbEdgeChange(this.value)" class="bg-white dark:bg-bsx-600 text-gray-800 dark:text-gray-200 text-xs rounded px-2 py-1 border border-gray-300 dark:border-bsx-400 focus:outline-none focus:border-blue-500 monospace">
+            <option value="0.1">&gt; 0.1%</option>
+            <option value="1" selected>&gt; 1%</option>
+            <option value="5">&gt; 5%</option>
+          </select>
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer" title="Also enumerate 4-hop A→B→C→D→A cycles. Slower, more results.">
+          <input id="arb-hops4" type="checkbox" onchange="onArbHopsChange(this.checked)" class="cursor-pointer">
+          Include 4-hop cycles
+        </label>
+        <span class="text-gray-400 dark:text-gray-500">Note: edges below ~1% are typically eaten by maker + chain fees.</span>
+      </div>
+      <div class="overflow-x-auto"><table class="w-full text-xs monospace"><thead><tr class="text-gray-500 dark:text-gray-300 uppercase text-left">
+        <th class="py-1 px-2">Cycle</th><th class="py-1 px-2 text-right">Edge %</th><th class="py-1 px-2 text-right">Min size (USD)</th>
+      </tr></thead><tbody id="tri-arb-body"></tbody></table></div>
+    </div>
+  </div>
+</section>
+
+<!-- Activity heatmap: 24×7 of when current offers were posted. -->
+<section id="activity-wrap" class="collapsible-section section-collapsed w-full px-4 pb-3">
+  <div class="section-h mb-2" onclick="toggleSection('activity-wrap')"><span class="chev"><i data-lucide="chevron-down" class="w-4 h-4"></i></span>Posting Activity <span class="text-xs font-normal text-gray-400 normal-case" style="letter-spacing:0">(current snapshot, UTC hour × weekday)</span></div>
+  <div class="collapsible-body">
+    <div class="bg-coolGray-100 dark:bg-bsx-500 rounded-lg p-3">
+      <div id="activity-grid" class="overflow-x-auto text-xs monospace"></div>
+    </div>
+  </div>
+</section>
+
+<!-- Activity feed: NEW / GONE / REVOKED events derived from local snapshot history.
+     Collapsed by default so it doesn't push the table further down on first paint. -->
+<section id="feed-wrap" class="collapsible-section section-collapsed w-full px-4 pb-3">
+  <div class="section-h mb-2" onclick="toggleSection('feed-wrap')"><span class="chev"><i data-lucide="chevron-down" class="w-4 h-4"></i></span>Activity Feed <span class="text-xs font-normal text-gray-400 normal-case" style="letter-spacing:0">(last 24h, derived from local snapshot history)</span> <span class="text-xs text-gray-400 ml-auto" id="feed-count"></span></div>
+  <div class="collapsible-body">
+    <div class="bg-coolGray-100 dark:bg-bsx-500 rounded-lg p-3">
+      <div id="feed-body" class="text-xs monospace max-h-72 overflow-y-auto"></div>
+    </div>
+  </div>
+</section>
+
+<!-- Modal container: reused for walk-the-book and help; populated by openWalkBook()/openHelp(). -->
+<div id="modal-root" style="display:none"></div>
+
 <footer class="w-full px-4 py-6 text-center">
   <p class="text-xs text-gray-500 dark:text-gray-400">
     © 2026 <a href="https://basicswapdex.com" class="text-blue-400 hover:underline">BasicSwap DEX</a> — Powered by BasicSwapDEX
@@ -234,386 +623,6 @@
   </p>
 </footer>
 
-<script>
-const COIN_GECKO_IDS={BTC:'bitcoin',XMR:'monero',LTC:'litecoin',PART:'particl',PART_BLIND:'particl',PART_ANON:'particl',BCH:'bitcoin-cash',FIRO:'zcoin',DASH:'dash',PIVX:'pivx',WOW:'wownero',DOGE:'dogecoin',DCR:'decred',NAV:'nav-coin',NMC:'namecoin',LTC_MWEB:'litecoin'};
-const COIN_NAMES={BTC:'Bitcoin',XMR:'Monero',LTC:'Litecoin',PART:'Particl',PART_BLIND:'Particl Blind',PART_ANON:'Particl Anon',BCH:'Bitcoin Cash',FIRO:'Firo',DASH:'Dash',PIVX:'PIVX',WOW:'Wownero',DOGE:'Dogecoin',DCR:'Decred',NAV:'Navcoin',NMC:'Namecoin',LTC_MWEB:'Litecoin MWEB'};
-const COIN_IMG={BTC:'Bitcoin',XMR:'Monero',LTC:'Litecoin',PART:'Particl',PART_BLIND:'Particl-Blind',PART_ANON:'Particl-Anon',BCH:'Bitcoin-Cash',FIRO:'Firo',DASH:'Dash',PIVX:'PIVX',WOW:'Wownero',DOGE:'Dogecoin',DCR:'Decred',NAV:'Navcoin',NMC:'Namecoin',LTC_MWEB:'Litecoin'};
-const SWAP_TYPES={1:'Secret Hash',2:'Seller First',3:'Seller First',4:'Buyer First',5:'Adaptor Sig',6:'Adaptor Sig'};
-
-let allOffers=[],latestPrices={},pricesEUR={},pricesGBP={},pricesZAR={},pricesCNY={},pricesJPY={},selectedPair='ALL',selectedCoin='ALL',searchQuery='';
-let currentSort='timestamp',sortAsc=false,lastFetchTime=0,countdown=300;
-let priceChart=null,depthChart=null,histChart=null,countdownInterval=null;
-const REFRESH_INTERVAL=300; // 5 minutes to match GitHub Actions
-
-function coinImg(t,s=20){return `<img src="images/coins/${(COIN_IMG[t]||t).replace(' ','-')}-20.png" alt="${t}" class="rounded-full" width="${s}" height="${s}" onerror="this.style.display='none'">`;}
-function formatUSD(v){if(!v)return'';return v>=1?'$'+v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}):'$'+v.toFixed(4);}
-function formatDuration(s){if(s<=0)return'Expired';const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return d>0?d+'d '+h+'h':h>0?h+'h '+m+'m':m+'m';}
-function calcMarketPct(o){const fp=latestPrices[COIN_GECKO_IDS[o.coin_from]],tp=latestPrices[COIN_GECKO_IDS[o.coin_to]];if(!fp||!tp)return null;const fa=parseFloat(o.amount_from_str),ta=parseFloat(o.amount_to_str);if(!fa||!ta)return null;const fv=fa*fp,tv=ta*tp;if(!fv||!tv)return null;return(-((tv/fv)-1))*100;}
-
-function getFilteredOffers(){
-  let o=[...allOffers];
-  if(searchQuery){const q=searchQuery.toLowerCase();o=o.filter(x=>(x.msg_id||'').toLowerCase().includes(q)||(x.addr_from||'').toLowerCase().includes(q));}
-  if(selectedCoin!=='ALL') o=o.filter(x=>x.coin_from===selectedCoin||x.coin_to===selectedCoin);
-  if(selectedPair!=='ALL'){const[b,q]=selectedPair.split('/');o=o.filter(x=>(x.coin_from===b&&x.coin_to===q)||(x.coin_from===q&&x.coin_to===b));}
-  return o;
-}
-function onSearchChange(){
-  searchQuery=document.getElementById('search-id').value.trim();
-  renderAllOrders();
-}
-function getPairs(){
-  const s=new Set();allOffers.forEach(o=>{const a=o.coin_from,b=o.coin_to;s.add(a<b?a+'/'+b:b+'/'+a);});return[...s].sort();
-}
-function getBidsAsks(pair){
-  const[base,quote]=pair.split('/'),bids=[],asks=[];
-  allOffers.forEach(o=>{const fa=parseFloat(o.amount_from_str),ta=parseFloat(o.amount_to_str);if(!fa||!ta)return;
-    if(o.coin_from===base&&o.coin_to===quote)asks.push({price:ta/fa,amount:fa,total:ta,offer:o});
-    else if(o.coin_from===quote&&o.coin_to===base)bids.push({price:fa/ta,amount:ta,total:fa,offer:o});
-  });
-  bids.sort((a,b)=>b.price-a.price);asks.sort((a,b)=>a.price-b.price);return{bids,asks};
-}
-function computeSpread(bids,asks){
-  if(!bids.length||!asks.length)return null;
-  const bb=bids[0].price,ba=asks[0].price,abs=ba-bb;return{bestBid:bb,bestAsk:ba,abs,pct:bb>0?(abs/bb)*100:0};
-}
-
-function chartColors(){
-  const dk=document.documentElement.classList.contains('dark');
-  return{text:dk?'#d1d5db':'#4b5563',grid:dk?'rgba(255,255,255,.06)':'rgba(0,0,0,.06)',bidFill:'rgba(16,185,129,.3)',bidLine:'#10b981',askFill:'rgba(239,68,68,.3)',askLine:'#ef4444',line:dk?'#3b82f6':'#2563eb',lineFill:dk?'rgba(59,130,246,.1)':'rgba(37,99,235,.1)'};
-}
-function renderDepthChart(bids,asks){
-  const w=document.getElementById('depth-chart-wrap');
-  if(!bids.length&&!asks.length){w.style.display='none';return;}
-  w.style.display='';const c=chartColors();
-  let cb=[],ca=[],v=0;
-  for(const b of bids){v+=b.amount;cb.push({x:b.price,y:v});}cb.reverse();
-  v=0;for(const a of asks){v+=a.amount;ca.push({x:a.price,y:v});}
-  if(depthChart)depthChart.destroy();
-  depthChart=new Chart(document.getElementById('depthChart'),{type:'line',data:{datasets:[
-    {label:'Bids',data:cb,borderColor:c.bidLine,backgroundColor:c.bidFill,fill:true,stepped:'after',pointRadius:0,borderWidth:2},
-    {label:'Asks',data:ca,borderColor:c.askLine,backgroundColor:c.askFill,fill:true,stepped:'before',pointRadius:0,borderWidth:2}
-  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-    scales:{x:{type:'linear',title:{display:true,text:'Price',color:c.text,font:{size:10}},ticks:{color:c.text,font:{size:9}},grid:{color:c.grid}},
-            y:{title:{display:true,text:'Cumulative',color:c.text,font:{size:10}},ticks:{color:c.text,font:{size:9}},grid:{color:c.grid}}},
-    interaction:{mode:'nearest',intersect:false}}});
-}
-function renderHistogram(offers){
-  const w=document.getElementById('histogram-wrap');
-  const sizes=offers.map(o=>{const p=latestPrices[COIN_GECKO_IDS[o.coin_from]];return p?parseFloat(o.amount_from_str)*p:0;}).filter(v=>v>0);
-  if(!sizes.length){w.style.display='none';return;}w.style.display='';const c=chartColors();
-  const mx=Math.max(...sizes),bn=Math.min(12,Math.max(4,Math.ceil(mx/100))),bs=mx/bn,buckets=new Array(bn).fill(0),labels=[];
-  sizes.forEach(v=>{const i=Math.min(Math.floor(v/bs),bn-1);buckets[i]++;});
-  for(let i=0;i<bn;i++)labels.push('$'+Math.round(i*bs)+'-'+Math.round((i+1)*bs));
-  if(histChart)histChart.destroy();
-  histChart=new Chart(document.getElementById('histogramChart'),{type:'bar',data:{labels,datasets:[{label:'Orders',data:buckets,backgroundColor:'rgba(59,130,246,.5)',borderColor:'#3b82f6',borderWidth:1}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-      scales:{x:{ticks:{color:c.text,font:{size:8},maxRotation:45},grid:{display:false}},y:{ticks:{color:c.text,font:{size:9},stepSize:1},grid:{color:c.grid}}}}});
-}
-async function fetchPriceHistory(days='1'){
-  document.querySelectorAll('.ph-btn').forEach(b=>{b.classList.remove('bg-blue-500','text-white');b.classList.add('bg-bsx-600','text-gray-300');});
-  const btn=document.querySelector(`.ph-btn[data-d="${days}"]`);
-  if(btn){btn.classList.add('bg-blue-500','text-white');btn.classList.remove('bg-bsx-600','text-gray-300');}
-  const w=document.getElementById('price-chart-wrap');
-  let coinId=null;
-  if(selectedPair!=='ALL')coinId=COIN_GECKO_IDS[selectedPair.split('/')[0]];
-  else if(selectedCoin!=='ALL')coinId=COIN_GECKO_IDS[selectedCoin];
-  if(!coinId){w.style.display='none';return;}w.style.display='';
-  try{const r=await fetch(`https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=usd&days=${days}`);const d=await r.json();renderPriceChart(d.prices||[]);}catch(e){console.warn('Price history failed:',e);}
-}
-function renderPriceChart(prices){
-  if(!prices.length)return;const c=chartColors();
-  const data=prices.map(([t,p])=>({x:t,y:p}));
-  if(priceChart)priceChart.destroy();
-  priceChart=new Chart(document.getElementById('priceChart'),{type:'line',data:{datasets:[{label:'Price (USD)',data,borderColor:c.line,backgroundColor:c.lineFill,fill:true,pointRadius:0,borderWidth:1.5,tension:.1}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-      scales:{x:{type:'linear',ticks:{color:c.text,font:{size:9},callback:v=>new Date(v).toLocaleDateString(undefined,{month:'short',day:'numeric'})},grid:{color:c.grid}},
-              y:{ticks:{color:c.text,font:{size:9},callback:v=>'$'+v.toLocaleString()},grid:{color:c.grid}}},
-      interaction:{mode:'nearest',intersect:false}}});
-}
-
-function renderBuySell(bids,asks,pair){
-  const[base,quote]=pair.split('/');
-  const bn=COIN_NAMES[base]||base,qn=COIN_NAMES[quote]||quote;
-  document.getElementById('bid-count').textContent=bids.length+' orders';
-  document.getElementById('ask-count').textContent=asks.length+' orders';
-  // Update buy/sell headers with coin names
-  document.querySelector('#buysell-wrap .text-green-400').innerHTML=`Buy ${bn} <span class="text-green-300 text-xs font-normal">(Bids — paying ${qn})</span>`;
-  document.querySelector('#buysell-wrap .text-red-400').innerHTML=`Sell ${bn} <span class="text-red-300 text-xs font-normal">(Asks — receiving ${qn})</span>`;
-  const bb=document.getElementById('bids-body'),mbt=bids.reduce((m,b)=>Math.max(m,b.total),0);
-  const pu=latestPrices[COIN_GECKO_IDS[base]];
-  bb.innerHTML=bids.slice(0,50).map(b=>{const p=mbt?(b.total/mbt*100):0;const usd=pu?' <span class="text-gray-400 dark:text-gray-500">('+formatUSD(b.amount*pu)+')</span>':'';return`<tr class="vol-bar hover:bg-green-900/10"><td class="py-1.5 px-2 text-green-400 whitespace-nowrap">${b.price.toFixed(8)} <span class="text-gray-400 dark:text-gray-500">${quote}</span></td><td class="py-1.5 px-2 text-right text-gray-700 dark:text-gray-100 whitespace-nowrap">${b.amount.toFixed(4)}${usd}</td><td class="py-1.5 px-2 text-right text-gray-500 dark:text-gray-300 whitespace-nowrap" style="background:linear-gradient(to left,rgba(16,185,129,.15) ${p}%,transparent ${p}%)">${b.total.toFixed(4)}</td></tr>`;}).join('')||'<tr><td colspan="3" class="py-4 text-center text-gray-400">No buy orders</td></tr>';
-  const ab=document.getElementById('asks-body'),mat=asks.reduce((m,a)=>Math.max(m,a.total),0);
-  ab.innerHTML=asks.slice(0,50).map(a=>{const p=mat?(a.total/mat*100):0;const usd=pu?' <span class="text-gray-400 dark:text-gray-500">('+formatUSD(a.amount*pu)+')</span>':'';return`<tr class="vol-bar hover:bg-red-900/10"><td class="py-1.5 px-2 text-red-400 whitespace-nowrap">${a.price.toFixed(8)} <span class="text-gray-400 dark:text-gray-500">${quote}</span></td><td class="py-1.5 px-2 text-right text-gray-700 dark:text-gray-100 whitespace-nowrap">${a.amount.toFixed(4)}${usd}</td><td class="py-1.5 px-2 text-right text-gray-500 dark:text-gray-300 whitespace-nowrap" style="background:linear-gradient(to left,rgba(239,68,68,.15) ${p}%,transparent ${p}%)">${a.total.toFixed(4)}</td></tr>`;}).join('')||'<tr><td colspan="3" class="py-4 text-center text-gray-400">No sell orders</td></tr>';
-}
-
-function renderAllOrders(){
-  let offers=getFilteredOffers();
-  offers.forEach(o=>{o._mktPct=calcMarketPct(o)||0;});
-  const sk=currentSort==='market_pct'?'_mktPct':currentSort;
-  offers.sort((a,b)=>sortAsc?(a[sk]||0)-(b[sk]||0):(b[sk]||0)-(a[sk]||0));
-  const tbody=document.getElementById('offers-body');
-  if(!offers.length){tbody.innerHTML='<tr><td colspan="7" class="py-16 text-center text-gray-400 dark:text-gray-300 text-sm">No offers match filter</td></tr>';return;}
-  // Find best deal (highest positive market %)
-  let bestIdx=-1,bestPct=-Infinity;
-  offers.forEach((o,i)=>{const m=o._mktPct;if(m>0&&m>bestPct){bestPct=m;bestIdx=i;}});
-  let totalUSD=0;const now=Math.floor(Date.now()/1000);
-  tbody.innerHTML=offers.map((o,idx)=>{
-    const fs=o.coin_from,ts=o.coin_to,fd=COIN_NAMES[fs]||fs,td=COIN_NAMES[ts]||ts;
-    const fi=(COIN_IMG[fs]||fs).replace(' ','-')+'.png',ti=(COIN_IMG[ts]||ts).replace(' ','-')+'.png';
-    const af=parseFloat(o.amount_from_str)||0,at=parseFloat(o.amount_to_str)||0;
-    const rate=af?at/af:0,inv=rate?1/rate:0,sl=SWAP_TYPES[o.swap_type]||'Swap';
-    const pf=latestPrices[COIN_GECKO_IDS[fs]],pt=latestPrices[COIN_GECKO_IDS[ts]];
-    const usdFrom=pf?(af*pf):0,usdTo=pt?(at*pt):0;
-    const ru=pt&&rate?'$'+(rate*pt).toFixed(2)+' USD':'N/A';
-    const usdFromStr=usdFrom?formatUSD(usdFrom):'';
-    const usdToStr=usdTo?formatUSD(usdTo):'';
-    totalUSD+=usdFrom;
-    const mp=calcMarketPct(o);let ms='—',mc='text-gray-400';
-    if(mp!==null){ms=(mp>=0?'+':'')+mp.toFixed(2)+'%';mc=mp>0?'text-green-400':mp<0?'text-red-400':'text-gray-400';}
-    // Age badge
-    const age=now-o.timestamp;
-    const isNew=age<3600;
-    const newBadge=isNew?'<span class="badge-new">NEW</span>':'';
-    // Expiry
-    const pd=new Date(o.timestamp*1000);
-    const ps=pd.toLocaleDateString(undefined,{month:'short',day:'numeric'})+' '+pd.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
-    const tl=(o.expire_at||(o.timestamp+(o.time_valid||14400)))-now;
-    let sc='#10B981';if(tl<=300)sc='#9CA3AF';else if(tl<=1800)sc='#3B82F6';
-    const expireWarn=tl<=300&&tl>0?' ⚠️':'';
-    // Best deal highlight
-    const isBest=idx===bestIdx;
-    const rowCls=`text-gray-700 dark:text-gray-100 hover:bg-coolGray-200 dark:hover:bg-bsx-600 border-b border-gray-200 dark:border-white/5${isBest?' best-deal':''}`;
-    const expireHtml=tl>0?formatDuration(tl)+expireWarn:'<span class="text-red-400">Expired</span>';
-    return`<tr class="${rowCls}">
-      <td class="desk-cell py-3 pl-3 pr-2 text-xs whitespace-nowrap"><div class="flex items-center gap-2"><svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24"><g stroke-linecap="round" stroke-width="2" fill="none" stroke="${sc}" stroke-linejoin="round"><circle cx="12" cy="12" r="11"/><polyline points="12,6 12,12 18,12" stroke="${sc}"/></g></svg><div><div class="text-xs dark:text-gray-100"><span class="bold">Posted:</span> ${ps}${newBadge}</div><div class="text-xs text-gray-500 dark:text-gray-400"><span class="bold">Expires:</span> ${expireHtml}</div><div class="text-xs text-gray-400 dark:text-gray-500 monospace" title="SMSG: ${o.msg_id||''}\nAddr: ${o.addr_from||''}">${(o.msg_id||'').slice(0,10)}… <span class="text-blue-400">${(o.addr_from||'').slice(0,8)}…</span></div></div></div></td>
-      <td class="desk-cell py-0"><div class="py-2 px-3 text-left monospace"><div class="text-sm font-semibold text-gray-800 dark:text-white">${at.toFixed(4)} <span class="text-xs font-normal text-gray-500 dark:text-gray-400">${ts}</span></div>${usdToStr?'<div class="text-xs text-gray-400 dark:text-gray-500">'+usdToStr+'</div>':''}</div></td>
-      <td class="desk-cell py-0 px-0 text-center"><div class="flex items-center justify-evenly"><img class="h-10" src="images/coins/${ti}" alt="${td}" onerror="this.style.display='none'"><svg class="w-5 h-5 mx-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" class="text-gray-400 dark:text-gray-300"/></svg><img class="h-10" src="images/coins/${fi}" alt="${fd}" onerror="this.style.display='none'"></div></td>
-      <td class="desk-cell p-0"><div class="py-2 px-3 text-right monospace"><div class="text-sm font-semibold text-gray-800 dark:text-white">${af.toFixed(4)} <span class="text-xs font-normal text-gray-500 dark:text-gray-400">${fs}</span></div>${usdFromStr?'<div class="text-xs text-gray-400 dark:text-gray-500">'+usdFromStr+'</div>':''}</div></td>
-      <td class="desk-cell py-3 px-2 text-right monospace text-xs"><div class="flex flex-col items-end"><span class="text-sm bold text-gray-800 dark:text-white">${ru}</span><span class="bold text-gray-700 dark:text-gray-200">${rate.toFixed(8)}</span><span class="text-gray-500 dark:text-gray-400">${ts}/${fs}</span></div></td>
-      <td class="desk-cell py-3 px-2 text-center monospace"><span class="text-sm font-bold ${mc}">${ms}${isBest?' ★':''}</span></td>
-      <td class="desk-cell py-3 px-2 text-center"><span class="inline-block px-2 py-1 text-xs font-medium rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">${sl}</span></td>
-      <td class="mob-card-wrap" colspan="7" style="display:none">
-        <div class="p-3 border-b border-gray-200 dark:border-white/6${isBest?' best-deal':''}">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24"><g stroke-linecap="round" stroke-width="2" fill="none" stroke="${sc}" stroke-linejoin="round"><circle cx="12" cy="12" r="11"/><polyline points="12,6 12,12 18,12" stroke="${sc}"/></g></svg>
-              ${ps}${newBadge}
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="text-xs font-bold ${mc}">${ms}${isBest?' ★':''}</span>
-              <span class="text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">${sl}</span>
-            </div>
-          </div>
-          <div class="flex items-center justify-between gap-2 mb-2">
-            <div class="flex-1">
-              <div class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">You send</div>
-              <div class="flex items-center gap-1.5">
-                <img class="w-5 h-5 rounded-full" src="images/coins/${ti}" alt="${td}" onerror="this.style.display='none'">
-                <span class="monospace font-semibold text-sm text-gray-800 dark:text-white">${at.toFixed(4)}</span>
-                <span class="text-xs text-gray-500 dark:text-gray-400">${ts}</span>
-              </div>
-              ${usdToStr?'<div class="text-xs text-gray-400 dark:text-gray-500 ml-6.5">'+usdToStr+'</div>':''}
-            </div>
-            <svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
-            <div class="flex-1 text-right">
-              <div class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">You get</div>
-              <div class="flex items-center gap-1.5 justify-end">
-                <span class="text-xs text-gray-500 dark:text-gray-400">${fs}</span>
-                <span class="monospace font-semibold text-sm text-gray-800 dark:text-white">${af.toFixed(4)}</span>
-                <img class="w-5 h-5 rounded-full" src="images/coins/${fi}" alt="${fd}" onerror="this.style.display='none'">
-              </div>
-              ${usdFromStr?'<div class="text-xs text-gray-400 dark:text-gray-500">'+usdFromStr+'</div>':''}
-            </div>
-          </div>
-          <div class="flex items-center justify-between text-xs monospace">
-            <span class="text-gray-500 dark:text-gray-400">${expireHtml}</span>
-            <span class="text-gray-700 dark:text-gray-200">${ru} <span class="text-gray-400 dark:text-gray-500">· ${rate.toFixed(6)} ${ts}/${fs}</span></span>
-          </div>
-          <div class="text-xs monospace text-gray-400 dark:text-gray-500 mt-1.5 pt-1.5 border-t border-gray-100 dark:border-white/5">
-            <div class="truncate" title="${o.msg_id||''}">ID: ${o.msg_id||''}</div>
-            ${o.addr_from?'<div class="truncate text-blue-400" title="'+o.addr_from+'">Addr: '+o.addr_from+'</div>':''}
-          </div>
-        </div>
-      </td>
-    </tr>`;}).join('');
-  const volStr=totalUSD>0?formatUSD(totalUSD):'—';
-  const tv=document.getElementById('totalVolume');if(tv)tv.textContent=volStr;
-  const hv=document.getElementById('header-volume');if(hv)hv.textContent='Est. Vol: '+volStr;
-}
-
-// Pair summary ticker cards
-function renderTicker(){
-  const pairs=getPairs(),container=document.getElementById('ticker-cards');
-  if(!pairs.length){container.innerHTML='';return;}
-  container.innerHTML=pairs.map(p=>{
-    const[b,q]=p.split('/');
-    const{bids,asks}=getBidsAsks(p);
-    const total=bids.length+asks.length;
-    const bestBid=bids.length?bids[0].price:0,bestAsk=asks.length?asks[0].price:0;
-    const sp=bestBid&&bestAsk?((bestAsk-bestBid)/bestBid*100).toFixed(2):'—';
-    const pb=latestPrices[COIN_GECKO_IDS[b]],pq=latestPrices[COIN_GECKO_IDS[q]];
-    const pbStr=pb?formatUSD(pb):'—', pqStr=pq?formatUSD(pq):'—';
-    const isSelected=selectedPair===p;
-    return`<div onclick="selectPair('${p}')" class="flex-shrink-0 px-3 py-2 rounded-lg cursor-pointer transition ${isSelected?'bg-blue-500/20 border border-blue-500/40':'bg-gray-100 dark:bg-bsx-500 border border-gray-300 dark:border-transparent hover:border-gray-400 dark:hover:border-bsx-400'}">
-      <div class="flex items-center gap-1.5 mb-1">
-        <img src="images/coins/${(COIN_IMG[b]||b).replace(' ','-')}-20.png" class="w-4 h-4 rounded-full" onerror="this.style.display='none'">
-        <img src="images/coins/${(COIN_IMG[q]||q).replace(' ','-')}-20.png" class="w-4 h-4 rounded-full" onerror="this.style.display='none'">
-        <span class="text-sm font-semibold text-gray-800 dark:text-white">${p}</span>
-        <span class="text-xs text-gray-500 dark:text-gray-400 bg-gray-200 dark:bg-bsx-400 px-1.5 rounded-full">${total}</span>
-      </div>
-      <div class="text-xs monospace text-gray-700 dark:text-gray-200">${b}: ${pbStr} · ${q}: ${pqStr}</div>
-      <div class="text-xs text-gray-500 dark:text-gray-400">Spread: <span class="${parseFloat(sp)>5?'text-yellow-500':'text-gray-500 dark:text-gray-400'}">${sp}%</span></div>
-    </div>`;
-  }).join('');
-}
-
-// Liquidity heatmap
-function renderHeatmap(){
-  const coins=[...new Set(allOffers.flatMap(o=>[o.coin_from,o.coin_to]))].sort();
-  if(coins.length<2){document.getElementById('heatmap-wrap').style.display='none';return;}
-  document.getElementById('heatmap-wrap').style.display='';
-  const vol={},cnt={};
-  allOffers.forEach(o=>{
-    const k=o.coin_from+'→'+o.coin_to;
-    const p=latestPrices[COIN_GECKO_IDS[o.coin_from]];
-    vol[k]=(vol[k]||0)+(p?parseFloat(o.amount_from_str)*p:0);
-    cnt[k]=(cnt[k]||0)+1;
-  });
-  const maxVol=Math.max(...Object.values(vol),1);
-  // Full-width table
-  let html='<table class="w-full" style="border-collapse:separate;border-spacing:3px"><tr><td></td>';
-  coins.forEach(c=>{html+=`<td class="text-center text-xs font-bold text-gray-600 dark:text-gray-300 pb-1">${c}</td>`;});
-  html+='</tr>';
-  coins.forEach(from=>{
-    html+=`<tr><td class="text-xs font-bold text-gray-600 dark:text-gray-300 pr-2 whitespace-nowrap text-right">${from}</td>`;
-    coins.forEach(to=>{
-      if(from===to){html+='<td><div class="heatmap-cell bg-gray-200 dark:bg-bsx-600 text-gray-400 dark:text-gray-500">—</div></td>';return;}
-      const k=from+'→'+to,v=vol[k]||0,n=cnt[k]||0;
-      const intensity=v>0?Math.max(0.2,Math.pow(v/maxVol,0.5)):0;
-      const bg=v>0?`rgba(59,130,246,${intensity.toFixed(2)})`:'rgba(128,128,128,0.08)';
-      const textColor=intensity>0.5?'#fff':v>0?'#93c5fd':'#666';
-      const pair=from<to?from+'/'+to:to+'/'+from;
-      html+=`<td><div class="heatmap-cell monospace" style="background:${bg};color:${textColor}" onclick="selectPair('${pair}')" title="${from} → ${to}: ${n} offer${n!==1?'s':''}, ${v>0?formatUSD(v):'no volume'}">${v>0?(v>=1000?'$'+Math.round(v/1000)+'k':'$'+Math.round(v)):'·'}</div></td>`;
-    });
-    html+='</tr>';
-  });
-  html+='</table>';
-  document.getElementById('heatmap-grid').innerHTML=html;
-}
-
-function renderAll(){
-  const offers=getFilteredOffers();
-  if(selectedPair!=='ALL'){
-    const{bids,asks}=getBidsAsks(selectedPair);
-    const[base,quote]=selectedPair.split('/');
-    document.getElementById('buysell-wrap').style.display='';
-    renderBuySell(bids,asks,selectedPair);renderDepthChart(bids,asks);renderHistogram(offers);
-    const sp=computeSpread(bids,asks),bar=document.getElementById('spread-bar');
-    if(sp){bar.style.display='';
-      document.getElementById('best-bid').textContent=sp.bestBid.toFixed(8)+' '+quote;
-      document.getElementById('best-ask').textContent=sp.bestAsk.toFixed(8)+' '+quote;
-      document.getElementById('spread-abs').textContent=sp.abs.toFixed(8)+' '+quote;
-      document.getElementById('spread-pct').textContent=sp.pct.toFixed(2)+'%';
-      // Fiat prices for base coin
-      const gid=COIN_GECKO_IDS[base],bn=COIN_NAMES[base]||base;
-      document.getElementById('fiat-coin-label').textContent='1 '+bn+' =';
-      const fmt=(v,s,d=2)=>v?s+v.toLocaleString(undefined,{maximumFractionDigits:d}):'—';
-      document.getElementById('spread-usd').textContent=fmt(latestPrices[gid],'$');
-      document.getElementById('spread-eur').textContent=fmt(pricesEUR[gid],'€');
-      document.getElementById('spread-gbp').textContent=fmt(pricesGBP[gid],'£');
-      document.getElementById('spread-zar').textContent=fmt(pricesZAR[gid],'R');
-      document.getElementById('spread-cny').textContent=fmt(pricesCNY[gid],'¥');
-      document.getElementById('spread-jpy').textContent=fmt(pricesJPY[gid],'¥',0);
-    }else{bar.style.display='none';}
-    fetchPriceHistory('1');
-  }else{
-    document.getElementById('buysell-wrap').style.display='none';
-    document.getElementById('depth-chart-wrap').style.display='none';
-    document.getElementById('spread-bar').style.display='none';
-    if(selectedCoin!=='ALL'){fetchPriceHistory('1');renderHistogram(offers);}
-    else{document.getElementById('price-chart-wrap').style.display='none';document.getElementById('histogram-wrap').style.display='none';}
-  }
-  renderAllOrders();
-}
-
-function buildFilters(){
-  const coins=[...new Set(allOffers.flatMap(o=>[o.coin_from,o.coin_to]))].sort();
-  document.getElementById('coin-filters').innerHTML=coins.map(c=>
-    `<button class="filter-btn px-2 py-1 text-xs font-semibold rounded border flex items-center gap-1" data-coin="${c}" onclick="setCoinFilter('${c}',this)">${coinImg(c,16)} ${c}</button>`
-  ).join('');
-  const pairs=getPairs(),sel=document.getElementById('pair-select');
-  sel.innerHTML='<option value="ALL">All Pairs</option>'+pairs.map(p=>`<option value="${p}"${p===selectedPair?' selected':''}>${p}</option>`).join('');
-}
-function setCoinFilter(coin,btn){
-  selectedCoin=coin;selectedPair='ALL';document.getElementById('pair-select').value='ALL';
-  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');
-  renderAll();renderTicker();
-}
-function selectPair(pair){
-  document.getElementById('pair-select').value=pair;
-  onPairChange(pair);
-}
-function onPairChange(pair){
-  selectedPair=pair;if(pair!=='ALL')selectedCoin='ALL';
-  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
-  if(pair==='ALL')document.querySelector('.filter-btn[data-coin="ALL"]').classList.add('active');
-  renderAll();renderTicker();
-}
-function sortBy(field){
-  if(currentSort===field)sortAsc=!sortAsc;else{currentSort=field;sortAsc=false;}
-  document.querySelectorAll('.sort-icon').forEach(el=>el.textContent='');
-  const icon=document.getElementById('sort-'+field);if(icon)icon.textContent=sortAsc?'↑':'↓';renderAllOrders();
-}
-
-function updateRefreshAgo(){
-  const ago=Math.floor((Date.now()-lastFetchTime)/1000);
-  document.getElementById('refresh-ago').textContent=lastFetchTime?(ago<60?ago+'s ago':Math.floor(ago/60)+'m ago'):'—';
-}
-function startCountdown(){
-  countdown=REFRESH_INTERVAL;if(countdownInterval)clearInterval(countdownInterval);
-  countdownInterval=setInterval(()=>{countdown--;
-    const m=Math.floor(countdown/60),s=countdown%60;
-    document.getElementById('refresh-countdown').textContent='('+m+':'+(s<10?'0':'')+s+')';
-    updateRefreshAgo();if(countdown<=0){countdown=REFRESH_INTERVAL;fetchOrderbook();}},1000);
-}
-async function manualRefresh(){
-  document.getElementById('refreshSpinner').classList.add('animate-spin');
-  await fetchPrices();await fetchOrderbook();
-  document.getElementById('refreshSpinner').classList.remove('animate-spin');
-}
-
-async function fetchPrices(){
-  try{const ids=[...new Set(Object.values(COIN_GECKO_IDS))].join(',');
-    const r=await fetch('https://api.coingecko.com/api/v3/simple/price?ids='+ids+'&vs_currencies=usd,eur,gbp,zar,cny,jpy');
-    if(!r.ok){console.warn('CoinGecko API error:',r.status);return;}
-    const d=await r.json();
-    if(d.status){console.warn('CoinGecko rate limited');return;} // rate limit response has {status:{error_code:429}}
-    for(const[id,val]of Object.entries(d)){
-      if(!val||!val.usd)continue;
-      latestPrices[id]=val.usd;pricesEUR[id]=val.eur||0;pricesGBP[id]=val.gbp||0;
-      pricesZAR[id]=val.zar||0;pricesCNY[id]=val.cny||0;pricesJPY[id]=val.jpy||0;
-    }
-  }catch(e){console.warn('Price fetch failed:',e);}
-}
-async function fetchOrderbook(){
-  try{const r=await fetch('orderbook.json?'+Date.now());const d=await r.json();
-    allOffers=d.offers||[];buildFilters();renderAll();renderTicker();renderHeatmap();
-    document.getElementById('offers-count').textContent=allOffers.length;
-    document.getElementById('newEntriesCount').textContent=allOffers.length;
-    document.getElementById('activePairs').textContent=getPairs().length;
-    const ts=(d&&d.updated_at)||new Date().toLocaleString();
-    document.getElementById('lastRefreshTime').textContent=ts;
-    lastFetchTime=Date.now();updateRefreshAgo();countdown=REFRESH_INTERVAL;
-  }catch(e){console.error('Orderbook fetch failed:',e);}
-}
-function toggleTheme(){
-  document.documentElement.classList.toggle('dark');
-  localStorage.setItem('bsx-theme',document.documentElement.classList.contains('dark')?'dark':'light');
-  if(selectedPair!=='ALL'||selectedCoin!=='ALL')renderAll();
-}
-if(localStorage.getItem('bsx-theme')==='light')document.documentElement.classList.remove('dark');
-(async()=>{await fetchPrices();await fetchOrderbook();startCountdown();})();
-setInterval(fetchPrices,300000);
-</script>
+<script src="app.js" defer></script>
 </body>
 </html>

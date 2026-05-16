@@ -22,6 +22,7 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 import socket
 import struct
 import sys
@@ -63,6 +64,34 @@ class MessageTypes(IntEnum):
     OFFER = 1
     BID = 2
     BID_ACCEPT = 3
+    XMR_OFFER = 4
+    XMR_BID_FL = 5
+    XMR_BID_SPLIT = 6
+    XMR_BID_ACCEPT_LF = 7
+    XMR_BID_TXN_SIGS_FL = 8
+    XMR_BID_LOCK_SPEND_TX_LF = 9
+    XMR_BID_LOCK_RELEASE_LF = 10
+    OFFER_REVOKE = 11
+    ADS_BID_LF = 12
+    ADS_BID_ACCEPT_FL = 13
+
+
+# Friendly labels for the message-type counter in stats.
+MESSAGE_TYPE_LABELS = {
+    MessageTypes.OFFER: "offer",
+    MessageTypes.BID: "bid",
+    MessageTypes.BID_ACCEPT: "bid_accept",
+    MessageTypes.XMR_OFFER: "xmr_offer",
+    MessageTypes.XMR_BID_FL: "xmr_bid",
+    MessageTypes.XMR_BID_SPLIT: "xmr_bid_split",
+    MessageTypes.XMR_BID_ACCEPT_LF: "xmr_bid_accept",
+    MessageTypes.XMR_BID_TXN_SIGS_FL: "xmr_bid_txn_sigs",
+    MessageTypes.XMR_BID_LOCK_SPEND_TX_LF: "xmr_lock_spend",
+    MessageTypes.XMR_BID_LOCK_RELEASE_LF: "xmr_lock_release",
+    MessageTypes.OFFER_REVOKE: "offer_revoke",
+    MessageTypes.ADS_BID_LF: "ads_bid",
+    MessageTypes.ADS_BID_ACCEPT_FL: "ads_bid_accept",
+}
 
 
 # Coin ID -> ticker (from BasicSwap chainparams)
@@ -73,8 +102,9 @@ COIN_TICKERS = {
     15: "LTC_MWEB", 17: "BCH", 18: "DOGE",
 }
 
-# Coin decimal places (most are 8, XMR/WOW are 12)
-COIN_DECIMALS = {6: 12, 9: 12}
+# Coin decimal places. Most are 8 (BTC-style); XMR uses 12, WOW uses 11.
+# Mirrors basicswap/chainparams.py (XMR_COIN = 10**12, WOW_COIN = 10**11).
+COIN_DECIMALS = {6: 12, 9: 11}
 DEFAULT_DECIMALS = 8
 
 
@@ -234,6 +264,73 @@ class OfferMessage:
             setattr(self, name, val)
 
 
+class BidMessage:
+    """Minimal protobuf-like parser for BSX BidMessage; we only need offer_msg_id
+    so the orderbook can attach bid_count to each offer."""
+    _map = {
+        1: ("protocol_version", 0), 2: ("offer_msg_id", 2),
+        3: ("time_valid", 0), 4: ("amount", 0),
+        5: ("pkhash_buyer", 2), 6: ("proof_address", 2),
+        7: ("proof_signature", 2), 8: ("proof_utxos", 2),
+        9: ("amount_to", 0), 10: ("rate", 0),
+    }
+
+    def from_bytes(self, b: bytes):
+        o = 0
+        while o < len(b):
+            tag, lv = decode_varint(b, o); o += lv
+            wire_type = tag & 7
+            field_num = tag >> 3
+            if field_num not in self._map:
+                if wire_type == 0:
+                    _, lv = decode_varint(b, o); o += lv
+                elif wire_type == 2:
+                    flen, lv = decode_varint(b, o); o += lv + flen
+                else:
+                    break
+                continue
+            name, _ = self._map[field_num]
+            if wire_type == 0:
+                val, lv = decode_varint(b, o); o += lv
+            elif wire_type == 2:
+                flen, lv = decode_varint(b, o); o += lv
+                val = b[o:o + flen]; o += flen
+            else:
+                break
+            setattr(self, name, val)
+
+
+class OfferRevokeMessage:
+    """Minimal parser for BSX OfferRevokeMessage; we only need offer_msg_id so the
+    orderbook can drop offers the maker has explicitly revoked. Mirrors basicswap's
+    messages_npb.OfferRevokeMessage (fields 1=offer_msg_id, 2=signature)."""
+    _map = {1: ("offer_msg_id", 2), 2: ("signature", 2)}
+
+    def from_bytes(self, b: bytes):
+        o = 0
+        while o < len(b):
+            tag, lv = decode_varint(b, o); o += lv
+            wire_type = tag & 7
+            field_num = tag >> 3
+            if field_num not in self._map:
+                if wire_type == 0:
+                    _, lv = decode_varint(b, o); o += lv
+                elif wire_type == 2:
+                    flen, lv = decode_varint(b, o); o += lv + flen
+                else:
+                    break
+                continue
+            name, _ = self._map[field_num]
+            if wire_type == 0:
+                val, lv = decode_varint(b, o); o += lv
+            elif wire_type == 2:
+                flen, lv = decode_varint(b, o); o += lv
+                val = b[o:o + flen]; o += flen
+            else:
+                break
+            setattr(self, name, val)
+
+
 # ============================================================================
 # SMSG Protocol Messages (wire format implementations)
 # ============================================================================
@@ -364,8 +461,25 @@ class BSXOfferListener(P2PInterface):
         self.offers = {}
         self.seen_msg_ids = set()
         self.inv_buckets = {}
+        # Stats: "decrypt_errors" is kept for backward compat = not_for_us + parse_errors.
+        # not_for_us = SMSGs encrypted to other recipients (not BSX) - normal background traffic.
+        # parse_errors = decrypted OK but offer payload failed to parse - actual failures.
+        # message_type_counts = histogram of decoded payload type bytes.
         self.stats = {"msgs_received": 0, "msgs_decrypted": 0,
-                      "offers_parsed": 0, "decrypt_errors": 0}
+                      "offers_parsed": 0, "decrypt_errors": 0,
+                      "not_for_us": 0, "parse_errors": 0,
+                      "message_type_counts": {}}
+        # Map of offer_msg_id -> count of bid messages observed for it.
+        self.bid_counts = {}
+        # Map of offer_msg_id -> list of decoded bid dicts (amount, amount_to, rate, time_valid,
+        # sent). Lets the orderbook expose the highest *active* open bid per offer, which takers
+        # care about more than the raw count.
+        self.bids_per_offer = {}
+        # Offer ids the maker has explicitly revoked via OFFER_REVOKE; filtered out of the
+        # published orderbook so consumers don't act on dead listings.
+        self.revoked_offer_ids = set()
+        # Track most-recent BSX message timestamp seen, surfaced in JSON for liveness.
+        self.last_bsx_msg_ts = 0
 
     def on_version(self, msg):
         self.send_message(msg_verack())
@@ -445,9 +559,59 @@ class BSXOfferListener(P2PInterface):
 
             try:
                 result = smsg_decrypt(self.network_privkey, smsg_msg)
-                self.stats["msgs_decrypted"] += 1
+            except AssertionError:
+                # MAC mismatch = SMSG was encrypted to a different recipient pubkey
+                # (private chat or other app), not addressed to BSX. Not really an error.
+                self.stats["not_for_us"] += 1
+                self.stats["decrypt_errors"] += 1
+                continue
+            except Exception:
+                self.stats["parse_errors"] += 1
+                self.stats["decrypt_errors"] += 1
+                continue
+
+            self.stats["msgs_decrypted"] += 1
+            try:
                 payload_hex = result["hex"]
                 msg_type = int(payload_hex[:2], 16)
+                # Track every BSX message type we see (offers, bids, accepts, revokes, ...)
+                label = MESSAGE_TYPE_LABELS.get(msg_type, f"type_{msg_type}")
+                self.stats["message_type_counts"][label] = (
+                    self.stats["message_type_counts"].get(label, 0) + 1
+                )
+                self.last_bsx_msg_ts = result.get("sent", self.last_bsx_msg_ts)
+                # Track bid -> offer linkage so the orderbook can show "interest" per offer.
+                if msg_type == MessageTypes.BID:
+                    try:
+                        bid_data = bytes.fromhex(payload_hex[2:])
+                        bm = BidMessage(); bm.from_bytes(bid_data)
+                        oid = getattr(bm, "offer_msg_id", b"")
+                        if isinstance(oid, (bytes, bytearray)) and oid:
+                            oid_hex = oid.hex()
+                            self.bid_counts[oid_hex] = self.bid_counts.get(oid_hex, 0) + 1
+                            # Capture the negotiable terms so the orderbook can surface the
+                            # highest open bid (sent + time_valid drives active-bid filtering).
+                            self.bids_per_offer.setdefault(oid_hex, []).append({
+                                "amount": int(getattr(bm, "amount", 0) or 0),
+                                "amount_to": int(getattr(bm, "amount_to", 0) or 0),
+                                "rate": int(getattr(bm, "rate", 0) or 0),
+                                "time_valid": int(getattr(bm, "time_valid", 0) or 0),
+                                "sent": int(result.get("sent", 0) or 0),
+                            })
+                    except Exception:
+                        pass
+                    continue
+                # Record explicit revocations so we can drop dead offers before publishing.
+                if msg_type == MessageTypes.OFFER_REVOKE:
+                    try:
+                        rev_data = bytes.fromhex(payload_hex[2:])
+                        rm = OfferRevokeMessage(); rm.from_bytes(rev_data)
+                        oid = getattr(rm, "offer_msg_id", b"")
+                        if isinstance(oid, (bytes, bytearray)) and oid:
+                            self.revoked_offer_ids.add(oid.hex())
+                    except Exception:
+                        pass
+                    continue
                 if msg_type != MessageTypes.OFFER:
                     continue
                 msg_data = bytes.fromhex(payload_hex[2:])
@@ -461,9 +625,19 @@ class BSXOfferListener(P2PInterface):
                 ticker_to = COIN_TICKERS.get(coin_to, f"?{coin_to}")
                 amount_from = getattr(offer, "amount_from", 0)
                 amount_to = getattr(offer, "amount_to", 0)
+                min_bid = getattr(offer, "min_bid_amount", 0)
+                # Proof address is a length-prefixed string field; decode to ascii if ascii-safe.
+                proof_addr_raw = getattr(offer, "proof_address", b"")
+                proof_addr = ""
+                if isinstance(proof_addr_raw, (bytes, bytearray)) and proof_addr_raw:
+                    try:
+                        proof_addr = proof_addr_raw.decode("ascii")
+                    except UnicodeDecodeError:
+                        proof_addr = proof_addr_raw.hex()
                 self.offers[msg_id] = {
                     "msg_id": msg_id,
                     "timestamp": result.get("sent", 0),
+                    "protocol_version": getattr(offer, "protocol_version", 0),
                     "coin_from": ticker_from,
                     "coin_to": ticker_to,
                     "coin_from_id": coin_from,
@@ -472,34 +646,97 @@ class BSXOfferListener(P2PInterface):
                     "amount_to": amount_to,
                     "amount_from_str": format_amount(amount_from, coin_from),
                     "amount_to_str": format_amount(amount_to, coin_to),
-                    "min_bid_amount": getattr(offer, "min_bid_amount", 0),
+                    "min_bid_amount": min_bid,
+                    "min_bid_amount_str": format_amount(min_bid, coin_from),
                     "swap_type": getattr(offer, "swap_type", 0),
+                    "lock_type": getattr(offer, "lock_type", 0),
+                    "lock_value": getattr(offer, "lock_value", 0),
+                    "fee_rate_from": getattr(offer, "fee_rate_from", 0),
+                    "fee_rate_to": getattr(offer, "fee_rate_to", 0),
+                    "amount_negotiable": bool(getattr(offer, "amount_negotiable", 0)),
+                    "rate_negotiable": bool(getattr(offer, "rate_negotiable", 0)),
+                    "auto_accept_type": getattr(offer, "auto_accept_type", 0),
                     "time_valid": getattr(offer, "time_valid", 0),
                     "rate": amount_to / amount_from if amount_from > 0 else 0,
+                    "proof_address": proof_addr,
                     "addr_from": result.get("addr_from", ""),
                 }
                 self.stats["offers_parsed"] += 1
                 log.info(f"  OFFER: {ticker_from}->{ticker_to} "
                          f"amt={format_amount(amount_from, coin_from)} "
                          f"id={msg_id[:16]}...")
-            except AssertionError:
-                self.stats["decrypt_errors"] += 1
             except Exception:
-                self.stats["decrypt_errors"] += 1
+                self.stats["parse_errors"] += 1
 
         log.info(f"  Processed batch: {self.stats['offers_parsed']} offers, "
                  f"{self.stats['msgs_decrypted']} decrypted, "
                  f"{self.stats['msgs_received']} total")
 
-    def get_orderbook_json(self) -> str:
+    def get_orderbook_dict(self, anonymize_makers: bool = False) -> dict:
         now = int(time.time())
-        return json.dumps({
+        # Tolerate listeners constructed without going through __init__ (test fixtures).
+        revoked = getattr(self, "revoked_offer_ids", set()) or set()
+        bids_per_offer = getattr(self, "bids_per_offer", {}) or {}
+        offers = []
+        revoked_dropped = 0
+        for o in self.offers.values():
+            if o.get("msg_id", "") in revoked:
+                revoked_dropped += 1
+                continue
+            o2 = dict(o)
+            # Attach observed bid count for this offer (defaults to 0 when no BIDs seen).
+            mid = o2.get("msg_id", "")
+            o2["bid_count"] = self.bid_counts.get(mid, 0)
+            # Compute the highest *active* open bid (max amount_to, the side the maker receives).
+            # Active = sent + time_valid > now. Falls back to None if no live bids.
+            best, active_n = None, 0
+            for bd in bids_per_offer.get(mid, []):
+                exp = bd["sent"] + bd["time_valid"]
+                if exp <= now:
+                    continue
+                active_n += 1
+                if best is None or bd["amount_to"] > best["amount_to"]:
+                    best = {**bd, "expires_in_s": exp - now}
+            if best is not None:
+                cf, ct = o2.get("coin_from_id"), o2.get("coin_to_id")
+                o2["highest_bid"] = {
+                    "amount": best["amount"],
+                    "amount_to": best["amount_to"],
+                    "amount_str": format_amount(best["amount"], cf) if cf else "",
+                    "amount_to_str": format_amount(best["amount_to"], ct) if ct else "",
+                    "expires_in_s": best["expires_in_s"],
+                    "active_bid_count": active_n,
+                }
+            else:
+                o2["highest_bid"] = None
+            if anonymize_makers and o2.get("addr_from"):
+                a = o2["addr_from"]
+                # Keep first 4 / last 4 of the base58 address; preserves uniqueness signal
+                # without publishing the full identifier.
+                o2["addr_from"] = (a[:4] + "…" + a[-4:]) if len(a) > 9 else a
+            offers.append(o2)
+        unique_makers = len({o.get("addr_from", "") for o in offers if o.get("addr_from")})
+        unique_pairs = len({
+            tuple(sorted([o.get("coin_from", ""), o.get("coin_to", "")]))
+            for o in offers if o.get("coin_from") and o.get("coin_to")
+        })
+        active = sum(1 for o in offers if (o.get("timestamp", 0) + o.get("time_valid", 0)) > now)
+        # Record how many offers were suppressed so /health and the UI can show coverage.
+        self.stats["revoked_offers_dropped"] = revoked_dropped
+        return {
             "timestamp": now,
             "updated_at": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(now)),
-            "num_offers": len(self.offers),
+            "num_offers": len(offers),
+            "active_offers": active,
+            "unique_makers": unique_makers,
+            "unique_pairs": unique_pairs,
+            "last_bsx_msg_ts": self.last_bsx_msg_ts,
             "stats": self.stats,
-            "offers": list(self.offers.values()),
-        }, indent=2)
+            "offers": offers,
+        }
+
+    def get_orderbook_json(self, anonymize_makers: bool = False) -> str:
+        return json.dumps(self.get_orderbook_dict(anonymize_makers), indent=2)
 
 
 
@@ -515,6 +752,13 @@ def main():
     parser.add_argument("-o", "--output", help="Output JSON file path")
     parser.add_argument("--duration", type=int, default=15, help="Seconds to listen (default: 15)")
     parser.add_argument("--debug", action="store_true", help="Debug logging")
+    parser.add_argument("--anonymize-makers", action="store_true",
+                        help="Truncate maker addresses in published JSON (privacy mode)")
+    parser.add_argument("--history-dir",
+                        help="If set, also write a timestamped snapshot file under this dir "
+                             "and update <history-dir>/manifest.json")
+    parser.add_argument("--health-file",
+                        help="If set, write a small liveness JSON (last-run + msg rate) here")
     args = parser.parse_args()
 
     if args.debug:
@@ -523,17 +767,16 @@ def main():
     # Decode network key
     privkey = decode_wif_privkey(NETWORK_KEY_WIF)
 
-    # Find a peer
+    # Build the candidate peer list. --auto used to pick only the first resolved peer; we now
+    # try each in turn so a single dead/refused IP doesn't abort the whole scrape.
     if args.peer:
         parts = args.peer.split(":")
-        peer_ip = parts[0]
-        peer_port = int(parts[1]) if len(parts) > 1 else PARTICL_MAINNET_PORT
+        candidates = [(parts[0], int(parts[1]) if len(parts) > 1 else PARTICL_MAINNET_PORT)]
     elif args.auto:
-        peers = resolve_peers()
-        if not peers:
+        candidates = resolve_peers()
+        if not candidates:
             log.error("No peers found"); return 1
-        peer_ip, peer_port = peers[0]
-        log.info(f"Using peer {peer_ip}:{peer_port}")
+        log.info(f"Resolved {len(candidates)} candidate peer(s)")
     else:
         parser.print_help()
         print("\nSpecify --peer or --auto")
@@ -547,24 +790,41 @@ def main():
     # Connect
     net = NetworkThread()
     net.start()
+    listener = None
+    connected = False
 
     try:
-        listener = BSXOfferListener(privkey)
-        listener.p2p_connected_to_node = True
-        listener.peer_connect(
-            dstaddr=peer_ip, dstport=peer_port,
-            services=NODE_NETWORK | NODE_WITNESS | NODE_SMSG,
-            send_version=True, net="mainnet",
-            timeout_factor=1, supports_v2_p2p=False,
-        )()
+        for idx, (cand_ip, cand_port) in enumerate(candidates):
+            log.info(f"[{idx + 1}/{len(candidates)}] Trying peer {cand_ip}:{cand_port}")
+            listener = BSXOfferListener(privkey)
+            listener.p2p_connected_to_node = True
+            try:
+                listener.peer_connect(
+                    dstaddr=cand_ip, dstport=cand_port,
+                    services=NODE_NETWORK | NODE_WITNESS | NODE_SMSG,
+                    send_version=True, net="mainnet",
+                    timeout_factor=1, supports_v2_p2p=False,
+                )()
+                listener.wait_for_connect(timeout=8)
+                listener.wait_for_verack(timeout=8)
+            except (AssertionError, OSError, ConnectionError) as e:
+                log.warning(f"  peer failed ({type(e).__name__}); trying next")
+                try:
+                    listener.peer_disconnect()
+                except Exception:
+                    pass
+                continue
 
-        listener.wait_for_connect(timeout=10)
-        listener.wait_for_verack(timeout=10)
-        listener.send_message(msg_smsgPing())
-        log.info(f"Connected. Listening for {args.duration}s...")
+            listener.send_message(msg_smsgPing())
+            log.info(f"Connected to {cand_ip}:{cand_port}. Listening for {args.duration}s...")
+            connected = True
+            for _ in range(args.duration):
+                time.sleep(1)
+            break
 
-        for _ in range(args.duration):
-            time.sleep(1)
+        if not connected:
+            log.error(f"All {len(candidates)} peer(s) failed to connect")
+            return 1
 
     except KeyboardInterrupt:
         log.info("Interrupted")
@@ -573,13 +833,70 @@ def main():
         time.sleep(0.5)
 
     # Output
-    orderbook = listener.get_orderbook_json()
+    started_ts = int(time.time()) - args.duration
+    book_dict = listener.get_orderbook_dict(anonymize_makers=args.anonymize_makers)
+    orderbook = json.dumps(book_dict, indent=2)
     if args.output:
         with open(args.output, "w") as f:
             f.write(orderbook)
         log.info(f"Saved {len(listener.offers)} offers to {args.output}")
     else:
         print(orderbook)
+
+    # Snapshot manifest: <history-dir>/<UTC-iso>.json + manifest.json with last 200 entries.
+    if args.history_dir:
+        try:
+            os.makedirs(args.history_dir, exist_ok=True)
+            snap_name = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + ".json"
+            snap_path = os.path.join(args.history_dir, snap_name)
+            with open(snap_path, "w") as f:
+                f.write(orderbook)
+            manifest_path = os.path.join(args.history_dir, "manifest.json")
+            try:
+                with open(manifest_path) as f:
+                    manifest = json.load(f)
+            except Exception:
+                manifest = {"snapshots": []}
+            # Per-pair offer counts (canonical pair = sorted ticker pair) so the
+            # UI can draw per-pair sparklines without fetching every snapshot file.
+            pair_counts = {}
+            for o in book_dict.get("offers", []):
+                cf, ct = o.get("coin_from"), o.get("coin_to")
+                if not cf or not ct:
+                    continue
+                key = "/".join(sorted([cf, ct]))
+                pair_counts[key] = pair_counts.get(key, 0) + 1
+            manifest.setdefault("snapshots", []).append({
+                "file": snap_name, "ts": book_dict["timestamp"],
+                "num_offers": book_dict["num_offers"],
+                "active_offers": book_dict.get("active_offers", 0),
+                "pair_counts": pair_counts,
+            })
+            manifest["snapshots"] = manifest["snapshots"][-200:]
+            with open(manifest_path, "w") as f:
+                json.dump(manifest, f, indent=2)
+            log.info(f"Wrote snapshot {snap_name} + updated manifest")
+        except Exception as e:
+            log.warning(f"history-dir write failed: {e}")
+
+    if args.health_file:
+        try:
+            duration = max(1, int(time.time()) - started_ts)
+            health = {
+                "last_run_ts": book_dict["timestamp"],
+                "last_run_iso": book_dict["updated_at"],
+                "last_bsx_msg_ts": listener.last_bsx_msg_ts,
+                "duration_s": duration,
+                "msgs_received": listener.stats.get("msgs_received", 0),
+                "msgs_decrypted": listener.stats.get("msgs_decrypted", 0),
+                "offers_parsed": listener.stats.get("offers_parsed", 0),
+                "msg_rate_per_s": round(listener.stats.get("msgs_received", 0) / duration, 3),
+                "ok": True,
+            }
+            with open(args.health_file, "w") as f:
+                json.dump(health, f, indent=2)
+        except Exception as e:
+            log.warning(f"health-file write failed: {e}")
 
     log.info(f"Done. {listener.stats}")
     return 0
