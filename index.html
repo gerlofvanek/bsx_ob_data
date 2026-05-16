@@ -16,6 +16,11 @@
        `lucide.createIcons()` swaps every <i data-lucide="..."> with a real <svg>; we re-run
        it after each major render (see redrawIcons() in app.js). -->
   <script src="https://unpkg.com/lucide@latest" defer></script>
+  <!-- Twemoji: replaces unicode emoji with inline SVG images so flag glyphs render on systems
+       without a colour-emoji font (some Linux distros, stripped Windows installs). Cannot touch
+       <option> text (browsers render that with the native font only) — for the fiat dropdown we
+       rely on the emoji-font fallback chain declared in the CSS below. -->
+  <script src="https://cdn.jsdelivr.net/npm/@twemoji/api@latest/dist/twemoji.min.js" defer></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
@@ -31,6 +36,13 @@
     try{if(localStorage.getItem('bsx-theme')==='light')document.documentElement.classList.remove('dark');}catch(e){}
   </script>
   <style>
+    /* Twemoji injects <img class="emoji"> in place of unicode glyphs. Size them inline so they
+       line up with surrounding text instead of rendering at their native 72px. */
+    img.emoji{height:1em;width:1em;margin:0 .05em 0 .1em;vertical-align:-0.1em;display:inline-block}
+    /* Emoji-font fallback for <select> options — Twemoji can't parse <option> text content, so
+       browsers render it with the native font stack. Listing flag-capable colour fonts up front
+       fixes flag glyphs on Linux distros without Noto Color Emoji set as default. */
+    select,option{font-family:system-ui,'Segoe UI Emoji','Segoe UI Symbol','Apple Color Emoji','Noto Color Emoji','Twemoji Mozilla',sans-serif}
     .monospace{font-family:'SF Mono','Fira Code','Cascadia Code',ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
     .bold{font-weight:700}.semibold{font-weight:600}
     .filter-btn{transition:all .15s ease;cursor:pointer;-webkit-tap-highlight-color:transparent}

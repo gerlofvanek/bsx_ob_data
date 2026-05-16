@@ -35,6 +35,10 @@ let arbEdgeMin=1, arbHops4=false;
 // Lucide icon refresh: after any render that injects new <i data-lucide="..."> placeholders
 // we re-scan so they get swapped for real <svg>. Cheap (skips already-processed nodes).
 function redrawIcons(){if(window.lucide&&typeof lucide.createIcons==='function')lucide.createIcons();}
+// Re-parse the document for emoji glyphs and swap them for Twemoji SVGs. Idempotent — the
+// library skips elements it has already processed. Called after init and after any render
+// that may have injected new flag emoji (spread bar refresh, ticker re-build, etc.).
+function runTwemoji(root){if(window.twemoji&&typeof twemoji.parse==='function')twemoji.parse(root||document.body,{folder:'svg',ext:'.svg'});}
 let watchlist=new Set(); // pairs the user has starred; persisted in localStorage
 let knownPairs=new Set(); // pairs seen in any prior fetch; persisted in localStorage
 let newPairs=new Set();   // pairs in the current snapshot that weren't in knownPairs
@@ -1493,9 +1497,10 @@ const TERM_EXPLAIN={
   fiat_size:{t:'Fiat size',b:'Estimated value of the amount being offered, priced at the current CoinGecko spot rate for that coin in the currently-selected display fiat.'},
 };
 function explainTerm(key){const e=TERM_EXPLAIN[key];if(!e)return;openModal('<h3>'+e.t+'</h3><p class="text-xs leading-relaxed">'+e.b+'</p>');}
-// Populate data-tip (CSS hover popover) and title (native fallback) from TERM_EXPLAIN so the
-// ⓘ icons reveal the real explanation on hover instead of a generic "What is this?" tooltip.
-function initExplainTips(){document.querySelectorAll('[data-explain]').forEach(el=>{const e=TERM_EXPLAIN[el.getAttribute('data-explain')];if(!e)return;el.setAttribute('data-tip',e.b);el.setAttribute('title',e.b);});}
+// Populate data-tip (CSS hover popover) from TERM_EXPLAIN and mirror it onto aria-label for
+// screen readers. The native title attribute is intentionally removed — otherwise the browser
+// would show its own ugly tooltip on top of our styled one (the "double tooltip" bug).
+function initExplainTips(){document.querySelectorAll('[data-explain]').forEach(el=>{const e=TERM_EXPLAIN[el.getAttribute('data-explain')];if(!e)return;el.setAttribute('data-tip',e.b);el.setAttribute('aria-label',e.t+': '+e.b);el.removeAttribute('title');});}
 // Settings modal. Consolidates global preferences that don't belong in the per-view filter bar:
 // notification threshold, color-blind palette toggle, theme, plus the browser Notification status.
 function openSettings(){
@@ -1744,6 +1749,7 @@ loadCachedPrices(); // show cached prices instantly while we fetch fresh ones
 // (subsequent renders call redrawIcons() themselves).
 redrawIcons();
 initExplainTips();
+runTwemoji();
 // Re-evaluate stale-data banner + snapshot-age chip on a timer so they auto-update without a refresh.
 setInterval(()=>{renderStaleBanner(latestOrderbook);updateSnapAge();},60000);
 setInterval(updateSnapAge,1000);
