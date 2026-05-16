@@ -12,14 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-  <!-- Lucide: lightweight, consistent SVG icon set. Replaces emoji + hand-rolled SVGs.
-       `lucide.createIcons()` swaps every <i data-lucide="..."> with a real <svg>; we re-run
-       it after each major render (see redrawIcons() in app.js). -->
   <script src="https://unpkg.com/lucide@latest" defer></script>
-  <!-- Twemoji: replaces unicode emoji with inline SVG images so flag glyphs render on systems
-       without a colour-emoji font (some Linux distros, stripped Windows installs). Cannot touch
-       <option> text (browsers render that with the native font only) — for the fiat dropdown we
-       rely on the emoji-font fallback chain declared in the CSS below. -->
   <script src="https://cdn.jsdelivr.net/npm/@twemoji/api@latest/dist/twemoji.min.js" defer></script>
   <script>
     tailwind.config = {
@@ -31,17 +24,10 @@
     }
   </script>
   <script>
-    // Inline FOUC guard: app.js is deferred, so apply the persisted theme synchronously here
-    // before first paint. Mirrors the bsx-theme key written by toggleTheme().
     try{if(localStorage.getItem('bsx-theme')==='light')document.documentElement.classList.remove('dark');}catch(e){}
   </script>
   <style>
-    /* Twemoji injects <img class="emoji"> in place of unicode glyphs. Size them inline so they
-       line up with surrounding text instead of rendering at their native 72px. */
     img.emoji{height:1em;width:1em;margin:0 .05em 0 .1em;vertical-align:-0.1em;display:inline-block}
-    /* Emoji-font fallback for <select> options — Twemoji can't parse <option> text content, so
-       browsers render it with the native font stack. Listing flag-capable colour fonts up front
-       fixes flag glyphs on Linux distros without Noto Color Emoji set as default. */
     select,option{font-family:system-ui,'Segoe UI Emoji','Segoe UI Symbol','Apple Color Emoji','Noto Color Emoji','Twemoji Mozilla',sans-serif}
     .monospace{font-family:'SF Mono','Fira Code','Cascadia Code',ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
     .bold{font-weight:700}.semibold{font-weight:600}
@@ -58,33 +44,25 @@
     .spread-fiat{display:inline-flex;align-items:center;padding:2px 8px;border-radius:4px;background:rgba(59,130,246,.08);font-size:11px}
     .dark .spread-fiat{background:rgba(59,130,246,.12)}
     .heatmap-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
-    /* Filter buttons - light mode fix */
+
     .filter-btn{color:#374151;border-color:#d1d5db}
     .dark .filter-btn{color:#d1d5db;border-color:#3d485b}
     .filter-btn.active{color:#93c5fd!important;border-color:#3b82f6!important;background:rgba(59,130,246,.15)!important}
-    /* Sticky filter bar so filters remain reachable while scrolling the orders table */
     .sticky-filters{position:sticky;top:0;z-index:30;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
     .sticky-filters.is-stuck{box-shadow:0 2px 8px rgba(0,0,0,.25)}
-    /* Color-blind safe palette (deuteranopia-friendly): green→blue, red→orange. Activated by
-       the `cb-safe` class on <html>, persisted as bsx-cb-safe in localStorage. We override only
-       the four most signal-bearing utilities (text-green-400, text-red-400 + their 300 variants
-       and background-color twins); the rest of the UI is already color-blind safe. */
     html.cb-safe .text-green-400,html.cb-safe #buysell-wrap .text-green-400,html.cb-safe .text-green-300{color:#60a5fa!important}
     html.cb-safe .text-red-400,html.cb-safe #buysell-wrap .text-red-400,html.cb-safe .text-red-300{color:#f97316!important}
     html.cb-safe .bg-green-500,html.cb-safe .bg-green-900\/30{background:rgba(96,165,250,.18)!important;border-color:rgba(96,165,250,.35)!important}
     html.cb-safe .bg-red-900\/30{background:rgba(249,115,22,.14)!important;border-color:rgba(249,115,22,.35)!important}
     html.cb-safe .badge-new{background:#60a5fa!important}
     html.cb-safe .best-deal{background:rgba(96,165,250,.08)!important;border-left-color:#60a5fa!important}
-    /* Section heading: subtle uppercase divider above each panel */
     .section-h{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b7280}
     .dark .section-h{color:#9ca3af}
-    /* Collapsible sections: clickable header w/ chevron; body hidden when collapsed */
     .collapsible-section .section-h{cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px}
     .collapsible-section .section-h:hover{color:#3b82f6}
     .collapsible-section .section-h .chev{display:inline-flex;align-items:center;transition:transform .15s;width:16px;height:16px}
     .collapsible-section.section-collapsed .section-h .chev{transform:rotate(-90deg)}
     .collapsible-section.section-collapsed .collapsible-body{display:none!important}
-    /* Stat chip used in the top scorecard */
     .stat-chip{display:inline-flex;flex-direction:column;padding:6px 10px;border-radius:8px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.18);min-width:88px}
     .dark .stat-chip{background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.22)}
     .stat-chip .lbl{font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.04em}
@@ -95,80 +73,55 @@
     .stat-chip.danger{background:rgba(239,68,68,.10);border-color:rgba(239,68,68,.30)}
     .stat-chip.danger .val{color:#ef4444}
     .stat-chip.ok .val{color:#10b981}
-    /* Watchlist star */
     .watch-star{cursor:pointer;line-height:1;font-size:14px;color:#9ca3af;transition:color .15s,transform .15s}
     .watch-star:hover{transform:scale(1.2)}
     .watch-star.on{color:#fbbf24}
-    /* Per-pair rate-alert bell (next to the watch star in ticker cards). Filled blue when set. */
     .rate-bell{cursor:pointer;line-height:1;color:#9ca3af;transition:color .15s,transform .15s;margin-left:2px}
     .rate-bell:hover{transform:scale(1.2);color:#60a5fa}
     .rate-bell.on{color:#60a5fa}
-    /* Fallback chip rendered when a coin icon PNG is missing (e.g. NAV) — keeps row alignment intact. */
     .coin-fallback{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;background:#475569;color:#fff;font-weight:700;line-height:1;flex-shrink:0;vertical-align:middle;letter-spacing:-.02em}
     html:not(.dark) .coin-fallback{background:#94a3b8}
-    /* Reserve a fixed slot for the sort arrow so clicking a header doesn't shift column widths
-       (active col gains ↓/↑, others lose theirs; without a fixed slot the layout reflows). */
     .sort-icon{display:inline-block;width:.9em;min-width:.9em;text-align:center;line-height:1;flex:0 0 auto;color:#9ca3af}
-    /* Active sort header: bolder, blue arrow + blue label so the current sort axis is obvious. */
     .sort-icon-active{color:#60a5fa;font-weight:700}
     .sort-th-active span:first-child{color:#60a5fa!important}
     html:not(.dark) .sort-icon-active{color:#1d4ed8}
     html:not(.dark) .sort-th-active span:first-child{color:#1d4ed8!important}
-    /* Compact density mode for the orders table */
     .compact #orders-table tbody td{padding-top:6px!important;padding-bottom:6px!important}
     .compact #orders-table tbody td .text-sm{font-size:12px!important}
     .compact #buysell-wrap td{padding-top:2px!important;padding-bottom:2px!important;font-size:10px!important}
-    /* Lite layout: orderbook-table-only view; persists in localStorage as bsx-lite. */
     body.lite #scorecard-row,body.lite .collapsible-section{display:none!important}
     body.lite #lite-toggle{color:#3b82f6;font-weight:600}
-    /* Negotiable badge */
     .neg-badge{display:inline-block;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;background:rgba(168,85,247,.18);color:#c084fc;border:1px solid rgba(168,85,247,.35);margin-left:3px}
-    /* Variant colours for offerExtraBadges() — overrides neg-badge defaults via higher specificity */
     .neg-badge.badge-lock{background:rgba(59,130,246,.18);color:#93c5fd;border-color:rgba(59,130,246,.35)}
     .neg-badge.badge-fee{background:rgba(16,185,129,.18);color:#6ee7b7;border-color:rgba(16,185,129,.35)}
     .neg-badge.badge-auto{background:rgba(168,85,247,.18);color:#c084fc;border-color:rgba(168,85,247,.35)}
     .neg-badge.badge-min{background:rgba(99,102,241,.18);color:#a5b4fc;border-color:rgba(99,102,241,.35)}
     .neg-badge.badge-proof{background:rgba(245,158,11,.18);color:#fcd34d;border-color:rgba(245,158,11,.35)}
-    /* Swap-type chip used in the orders table (replaces inline Tailwind blue-400 utilities) */
     .swap-type-chip{display:inline-block;padding:4px 8px;font-size:12px;font-weight:500;border-radius:4px;background:rgba(59,130,246,.18);color:#93c5fd;border:1px solid rgba(59,130,246,.35);line-height:1.2;white-space:nowrap}
     .swap-type-chip.sm{padding:2px 6px;font-size:11px}
-    /* Cap the Swap Type column width so its extra badges stack vertically instead of pushing
-       the column off-screen. The inner stack carries the max-width; the cell itself can't, because
-       #orders-table is sized with min-width:max-content (Tailwind min-w-max). */
     .swap-type-stack{max-width:220px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:4px}
     .swap-type-badges{display:flex;flex-wrap:wrap;gap:3px;justify-content:center}
     .swap-type-badges .neg-badge{margin-left:0}
-    /* Bid-count badge: shown when scraper has observed BID messages targeting this offer */
     .badge-bid{background:rgba(34,197,94,.18);color:#86efac;border:1px solid rgba(34,197,94,.35);font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;margin-left:4px}
-    /* Expired offer row: subtle de-emphasis only — readable without hover. */
     #orders-table tbody tr.row-expired td{color:#94a3b8}
     html.dark #orders-table tbody tr.row-expired td{color:#64748b}
     #orders-table tbody tr.row-expired td .text-gray-800,
     #orders-table tbody tr.row-expired td .dark\:text-white{color:inherit!important;font-weight:500!important}
-    /* Stale data banner */
     .stale-banner{background:linear-gradient(90deg,rgba(245,158,11,.15),rgba(239,68,68,.10));border-bottom:1px solid rgba(245,158,11,.35)}
     .sticky-filters{top:0}
-    /* Watchlist conflict banner shown when "Watched only" hides the actively-selected pair */
     .filter-conflict{background:rgba(245,158,11,.10);border:1px solid rgba(245,158,11,.30);color:#fbbf24;padding:2px 8px;border-radius:4px;font-size:11px}
-    /* Stat chip drill-down hover affordance */
     .stat-chip[data-action]{cursor:pointer}
     .stat-chip[data-action]:hover{filter:brightness(1.15)}
-    /* Modal (walk-the-book) */
     .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:60;display:flex;align-items:center;justify-content:center;padding:16px}
     .modal-card{background:#1a202c;color:#e5e7eb;border:1px solid #3d485b;border-radius:8px;max-width:560px;width:100%;padding:18px;font-size:13px;position:relative}
-    /* Top-right X close affordance — present on every modal for consistent dismiss UX */
     .modal-x{position:absolute;top:6px;right:8px;width:24px;height:24px;border:none;background:transparent;color:#9ca3af;font-size:20px;line-height:1;cursor:pointer;border-radius:4px}
     .modal-x:hover{color:#fff;background:rgba(255,255,255,.08)}
     html:not(.dark) .modal-x{color:#6b7280}
     html:not(.dark) .modal-x:hover{color:#1f2937;background:rgba(0,0,0,.06)}
     html:not(.dark) .modal-card{background:#fff;color:#1f2937;border-color:#d1d5db}
     .modal-card h3{font-size:15px;font-weight:700;margin-bottom:8px}
-    /* Inline jargon-help affordance: small ⓘ glyph next to potentially-confusing terms. Click
-       triggers explainTerm() via data-action="explain" + data-explain="<key>" delegated handler. */
     .explain-i{display:inline-block;width:14px;height:14px;line-height:14px;text-align:center;border-radius:50%;font-size:10px;cursor:help;color:#9ca3af;opacity:.65;font-weight:normal;position:relative}
     .explain-i:hover{color:#60a5fa;opacity:1;background:rgba(96,165,250,.12)}
-    /* CSS-only tooltip popover. data-tip is populated at startup from TERM_EXPLAIN so the
-       hover text is the real explanation rather than the generic "What is this?" title. */
     .explain-i[data-tip]:hover::after{content:attr(data-tip);position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#1f2937;color:#e5e7eb;font-size:11px;font-weight:400;line-height:1.45;padding:8px 10px;border-radius:6px;width:260px;max-width:80vw;text-align:left;white-space:normal;box-shadow:0 6px 16px rgba(0,0,0,.35);z-index:60;pointer-events:none;text-transform:none;letter-spacing:normal;border:1px solid rgba(255,255,255,.08)}
     .explain-i[data-tip]:hover::before{content:'';position:absolute;top:calc(100% + 2px);left:50%;transform:translateX(-50%);border:6px solid transparent;border-bottom-color:#1f2937;z-index:60;pointer-events:none}
     html:not(.dark) .explain-i[data-tip]:hover::after{background:#1f2937;color:#f3f4f6;border-color:rgba(0,0,0,.1)}
@@ -176,21 +129,16 @@
     .modal-card label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:#9ca3af;margin-bottom:8px}
     .modal-card input,.modal-card select{background:#232b3a;color:#fff;border:1px solid #3d485b;border-radius:4px;padding:4px 8px;font-size:12px}
     html:not(.dark) .modal-card input,html:not(.dark) .modal-card select{background:#fff;color:#1f2937;border-color:#d1d5db}
-    /* Table-based modal rows: keep the divider but let native <th>/<td> alignment drive
-       column layout. (Previous display:flex collapsed multi-column leaderboard tables.) */
     .modal-card .row{border-bottom:1px solid #2d3748}
     .modal-card .row td{padding:4px 8px;vertical-align:middle}
     .modal-card table{border-collapse:collapse;width:100%}
     .modal-card table thead th{padding:4px 8px;border-bottom:1px solid #2d3748;font-weight:600}
     html:not(.dark) .modal-card .row,html:not(.dark) .modal-card table thead th{border-color:#e5e7eb}
-    /* Activity heatmap: highlight the active cell + give clickable affordance. */
     #activity-grid td.cell-cell{cursor:pointer;transition:filter .12s,outline-color .12s;outline:1px solid transparent}
     #activity-grid td.cell-cell:hover{filter:brightness(1.15)}
     #activity-grid td.cell-active{outline:1.5px solid #f59e0b;outline-offset:-1px}
-    /* Posted-time filter chip (shown next to the search/filter row when active). */
     .posted-chip{display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,.18);color:#f59e0b;border:1px solid rgba(245,158,11,.45);padding:2px 8px;border-radius:9999px;font-size:11px;cursor:pointer}
     .posted-chip:hover{background:rgba(245,158,11,.28)}
-    /* Mobile */
     @media(max-width:768px){
       .desktop-only{display:none!important}
       .mobile-stack{flex-direction:column!important}
@@ -204,20 +152,14 @@
       .heatmap-cell{min-width:36px;padding:4px;font-size:9px}
       .stat-chip{min-width:72px;padding:4px 8px}
       .stat-chip .val{font-size:12px}
-      /* Modal: full-width with safe-area insets so the X stays tappable inside the viewport. */
       .modal-bg{padding:8px!important}
       .modal-card{max-height:calc(100vh - 16px)!important;overflow-y:auto!important;padding:14px!important}
       .modal-card h3{font-size:14px}
-      /* Spread mini-chart: shrink so the spread bar doesn't horizontally overflow. */
       #spread-mini{width:100%!important;max-width:280px}
-      /* "More filters" disclosure: stack contents vertically so each toggle is full-width tappable. */
       #more-filters-wrap[open] > div{flex-direction:column!important;align-items:flex-start!important;gap:6px!important}
-      /* Activity feed rows: drop the fixed-width columns that overflow on a phone. */
       #feed-body .row{flex-wrap:wrap!important}
       #feed-body .row > span{width:auto!important}
-      /* Touch targets: bump help-icon hit area so they're not finger-too-thin. */
       .explain-i{width:18px;height:18px;line-height:18px}
-      /* Activity heatmap: drop weekend rows? No — instead reduce hour cells so all 24 fit. */
       #activity-grid td.cell-cell{min-width:14px;padding:1px 2px;font-size:8px}
     }
     @media(min-width:769px){
@@ -225,7 +167,6 @@
       .mob-card-wrap{display:none!important}
     }
     .-translate-y-1\/2{-webkit-transform:translateY(-50%);transform:translateY(-50%)}
-    /* Light-theme polish: tighten contrast on badges, chips, and muted rows that were tuned for the dark palette. */
     html:not(.dark) .badge-bid{background:rgba(22,163,74,.12);color:#15803d;border-color:rgba(22,163,74,.45)}
     html:not(.dark) .neg-badge{background:rgba(147,51,234,.10);color:#7e22ce;border-color:rgba(147,51,234,.40)}
     html:not(.dark) .neg-badge.badge-lock{background:rgba(59,130,246,.10);color:#1d4ed8;border-color:rgba(59,130,246,.45)}
@@ -233,7 +174,6 @@
     html:not(.dark) .neg-badge.badge-auto{background:rgba(168,85,247,.10);color:#7e22ce;border-color:rgba(168,85,247,.45)}
     html:not(.dark) .neg-badge.badge-min{background:rgba(99,102,241,.10);color:#4338ca;border-color:rgba(99,102,241,.45)}
     html:not(.dark) .neg-badge.badge-proof{background:rgba(245,158,11,.10);color:#b45309;border-color:rgba(245,158,11,.45)}
-    /* Print: strip chrome, leave only the orders table on a clean white page. */
     @media print{
       body{background:#fff!important;color:#000!important}
       nav,header,footer,button,select,input,.sticky-filters,#scorecard-row,#refresh-info,#stale-banner,#modal-root,.collapsible-section{display:none!important}
@@ -249,7 +189,6 @@
     html:not(.dark) .heatmap-cell:hover{box-shadow:0 2px 8px rgba(15,23,42,.18)}
     html:not(.dark) .filter-btn.active{color:#1d4ed8!important;background:rgba(59,130,246,.10)!important}
     html:not(.dark) .stat-chip[data-action]:hover{filter:brightness(.97)}
-    /* Light-theme: lift Tailwind 400-shade text/badges to 600/700 shades for adequate contrast on white. */
     html:not(.dark) #pair-select,html:not(.dark) #swap-type-filter{background:#fff!important;color:#1f2937!important;border-color:#d1d5db!important}
     html:not(.dark) #pair-select + svg,html:not(.dark) #swap-type-filter + svg{color:#6b7280!important}
     html:not(.dark) .sticky-filters label.text-gray-500{color:#374151}
@@ -301,10 +240,6 @@
   </div>
 </nav>
 
-<!-- Stale-data banner removed from public UI; the snapshot-age chip already
-     conveys freshness. renderStaleBanner() in app.js no-ops without #stale-banner. -->
-
-<!-- Top scorecard: at-a-glance Network Pulse + 24h activity, visible above the fold -->
 <div class="w-full px-4 pt-3 pb-1" id="scorecard-row">
   <div class="flex flex-wrap items-stretch gap-2">
     <div class="stat-chip ok" data-action="scroll-table" title="Scroll to orders table"><span class="lbl">Active offers</span><span class="val" id="sc-active">—</span></div>
@@ -324,7 +259,6 @@
   </div>
 </div>
 
-<!-- Filters (sticky) -->
 <div class="sticky-filters bg-coolGray-100 dark:bg-bsx-700 w-full px-4 pt-3 pb-2 border-b border-gray-200 dark:border-bsx-400" id="filter-wrap">
   <div class="flex flex-wrap items-center gap-3 mb-2">
     <div class="relative">
@@ -385,8 +319,6 @@
       <input id="min-usd-filter" type="number" min="0" step="10" value="0" oninput="onMinUsdChange(this.value)" class="bg-white dark:bg-bsx-600 text-gray-800 dark:text-gray-200 text-xs rounded px-2 py-1 border border-gray-300 dark:border-bsx-400 focus:outline-none focus:border-blue-500 w-20 monospace" spellcheck="false">
     </label>
     <button onclick="clearFilters()" aria-label="Clear all filters" class="text-xs text-gray-500 dark:text-gray-400 hover:text-blue-400 underline" title="Reset all filters (X)">Clear filters</button>
-    <!-- Secondary filters collapsed behind a disclosure to keep the primary bar legible.
-         Active-count badge mirrors moreFiltersActiveCount() in app.js. -->
     <details id="more-filters-wrap" class="text-xs">
       <summary class="cursor-pointer text-gray-500 dark:text-gray-300 hover:text-blue-400 inline-flex items-center gap-1 select-none list-none" title="Show secondary filters"><i data-lucide="sliders-horizontal" class="w-3.5 h-3.5"></i> More filters<span id="more-filters-badge" class="text-blue-400" style="display:none"></span></summary>
       <div class="flex flex-wrap items-center gap-3 mt-2 pl-2 border-l border-gray-300 dark:border-bsx-400">
@@ -414,10 +346,6 @@
       </div>
     </details>
     <button onclick="openSettings()" aria-label="Settings" class="text-xs text-gray-500 dark:text-gray-300 hover:text-blue-400 inline-flex items-center gap-1" title="Settings: notifications, palette, rate alerts"><i data-lucide="settings" class="w-3.5 h-3.5"></i> Settings</button>
-    <!-- CSV/JSON export buttons hidden for the public deployment. The exportCsv()/exportJson()
-         helpers in app.js are kept; trigger via the browser console for ad-hoc dumps. -->
-    <!-- <button onclick="exportCsv()" ...>CSV</button> -->
-    <!-- <button onclick="exportJson()" ...>JSON</button> -->
     <span id="filter-conflict" class="filter-conflict" style="display:none"></span>
     <span id="posted-filter-chip" class="posted-chip" style="display:none" data-action="clear-posted-filter" title="Clear posted-time filter"></span>
     <span id="filter-count" class="text-xs text-gray-400 ml-auto"></span>
@@ -432,9 +360,6 @@
       <span id="maker-concentration" class="text-gray-400"></span>
     </div>
     <div id="spread-one-side" class="text-orange-400 mb-1.5" style="display:none"></div>
-    <!-- Inline 24h CoinGecko sparkline of the BASE coin (USD). Hollow blue line = spot. Dashed
-         green = current best-bid (USD-equivalent), dashed red = current best-ask. Lets the user
-         eyeball whether the on-chain offers are above/below recent spot range. -->
     <div id="spread-mini-wrap" class="mb-1.5" style="display:none"><svg id="spread-mini" width="240" height="44" style="overflow:visible"></svg> <span class="text-xs text-gray-400 ml-1">24h spot vs best bid/ask</span></div>
     <div id="spread-fiat-row" class="flex flex-wrap items-center gap-2">
       <span class="text-gray-400 dark:text-gray-500 text-xs" id="fiat-coin-label">1 BTC =</span>
@@ -448,8 +373,6 @@
   </div>
 </div>
 
-<!-- Buy / Sell Book (auto-expands when a pair is selected). Placed above the orders table
-     so the live aggregated bid/ask view is the first thing visible after picking a pair. -->
 <section id="buysell-wrap" class="collapsible-section w-full px-4 pb-3" style="display:none">
   <div class="section-h mb-2" onclick="toggleSection('buysell-wrap')"><span class="chev"><i data-lucide="chevron-down" class="w-4 h-4"></i></span>Buy / Sell Book</div>
   <div class="collapsible-body">
@@ -490,7 +413,6 @@
   </div>
 </section>
 
-<!-- All Orders table. Analytics widgets sit below as collapsible sections. -->
 <div class="w-full">
   <div class="bg-coolGray-100 dark:bg-bsx-500">
     <div class="overflow-x-auto">
@@ -521,7 +443,6 @@
   </div>
 </div>
 
-<!-- Markets Overview (collapsible, default expanded) -->
 <section id="sec-markets" class="collapsible-section w-full px-4 pt-4 pb-3">
   <div class="section-h mb-2" onclick="toggleSection('sec-markets')"><span class="chev"><i data-lucide="chevron-down" class="w-4 h-4"></i></span>Markets Overview</div>
   <div class="collapsible-body">
@@ -541,7 +462,6 @@
   </div>
 </section>
 
-<!-- Pair Analytics (collapsible, auto-expands when a pair is selected) -->
 <section id="pair-analytics-h" class="collapsible-section section-collapsed w-full px-4 pb-3" style="display:none">
   <div class="section-h mb-2" onclick="toggleSection('pair-analytics-h')"><span class="chev"><i data-lucide="chevron-down" class="w-4 h-4"></i></span>Pair Analytics <span id="pair-analytics-pair" class="text-gray-400 normal-case tracking-normal" style="letter-spacing:0"></span></div>
   <div class="collapsible-body">
@@ -565,7 +485,6 @@
   </div>
 </section>
 
-<!-- Order Size Distribution (collapsible, default expanded) -->
 <section id="histogram-wrap" class="collapsible-section w-full px-4 pb-3" style="display:none">
   <div class="section-h mb-2" onclick="toggleSection('histogram-wrap')"><span class="chev"><i data-lucide="chevron-down" class="w-4 h-4"></i></span>Order Size Distribution <span class="text-xs font-normal text-gray-400 normal-case" style="letter-spacing:0">(USD, priced offers only)</span></div>
   <div class="collapsible-body">
@@ -575,12 +494,10 @@
   </div>
 </section>
 
-<!-- Triangular arbitrage (collapsible, hidden entirely until ≥1 cycle exists). -->
 <section id="tri-arb-wrap" class="collapsible-section w-full px-4 pb-3" style="display:none">
   <div class="section-h mb-2" onclick="toggleSection('tri-arb-wrap')" onclickignore=""><span class="chev"><i data-lucide="chevron-down" class="w-4 h-4"></i></span>Arbitrage Cycles <span class="text-xs font-normal text-gray-400 normal-case" style="letter-spacing:0">(best-of-book, ignores fees &amp; slippage)</span> <span class="text-xs text-gray-400 ml-auto" id="tri-arb-count"></span></div>
   <div class="collapsible-body">
     <div class="bg-coolGray-100 dark:bg-bsx-500 rounded-lg p-3">
-      <!-- Min edge selector + 4-hop toggle. Clicks are stopped from bubbling into the section header so they don't collapse the panel. -->
       <div class="flex flex-wrap items-center gap-3 mb-2 text-xs text-gray-500 dark:text-gray-300" onclick="event.stopPropagation()">
         <label class="flex items-center gap-1.5">Min edge:
           <select id="arb-edge-min" onchange="onArbEdgeChange(this.value)" class="bg-white dark:bg-bsx-600 text-gray-800 dark:text-gray-200 text-xs rounded px-2 py-1 border border-gray-300 dark:border-bsx-400 focus:outline-none focus:border-blue-500 monospace">
@@ -602,7 +519,6 @@
   </div>
 </section>
 
-<!-- Activity heatmap: 24×7 of when current offers were posted. -->
 <section id="activity-wrap" class="collapsible-section section-collapsed w-full px-4 pb-3">
   <div class="section-h mb-2" onclick="toggleSection('activity-wrap')"><span class="chev"><i data-lucide="chevron-down" class="w-4 h-4"></i></span>Posting Activity <span class="text-xs font-normal text-gray-400 normal-case" style="letter-spacing:0">(current snapshot, UTC hour × weekday)</span></div>
   <div class="collapsible-body">
@@ -612,8 +528,6 @@
   </div>
 </section>
 
-<!-- Activity feed: NEW / GONE / REVOKED events derived from local snapshot history.
-     Collapsed by default so it doesn't push the table further down on first paint. -->
 <section id="feed-wrap" class="collapsible-section section-collapsed w-full px-4 pb-3">
   <div class="section-h mb-2" onclick="toggleSection('feed-wrap')"><span class="chev"><i data-lucide="chevron-down" class="w-4 h-4"></i></span>Activity Feed <span class="text-xs font-normal text-gray-400 normal-case" style="letter-spacing:0">(last 24h, derived from local snapshot history)</span> <span class="text-xs text-gray-400 ml-auto" id="feed-count"></span></div>
   <div class="collapsible-body">
@@ -623,7 +537,6 @@
   </div>
 </section>
 
-<!-- Modal container: reused for walk-the-book and help; populated by openWalkBook()/openHelp(). -->
 <div id="modal-root" style="display:none"></div>
 
 <footer class="w-full px-4 py-6 text-center">
