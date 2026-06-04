@@ -1,9 +1,7 @@
 name: Update Orderbook
 
 on:
-  schedule:
-    - cron: '*/5 * * * *'  # Every 5 minutes
-  workflow_dispatch:        # Manual trigger
+  workflow_dispatch:        # Triggered externally (cron-job.org) or manually from the Actions tab
 
 permissions:
   contents: write
