@@ -168,6 +168,51 @@ def test_revoke_filter_tolerates_missing_attribute():
     assert out["stats"]["revoked_offers_dropped"] == 0
 
 
+def _maker_key_and_address():
+    """Deterministic Particl P2PKH keypair for signing revoke messages in tests."""
+    from coincurve.keys import PrivateKey
+    k = PrivateKey(b"\x01" * 32)
+    pkh = scraper.hash160(k.public_key.format(compressed=True))
+    return k, scraper.pkh_to_address(b"\x38" + pkh)
+
+
+def _sign_message(privkey, message: str) -> bytes:
+    """Produce a Bitcoin-style 65-byte compact signature (compressed key)."""
+    sig = privkey.sign_recoverable(
+        scraper.signed_message_hash(message.encode()), hasher=None
+    )  # r||s||recid
+    return bytes([31 + sig[64]]) + sig[:64]
+
+
+def test_revoke_with_valid_signature_drops_offer():
+    """A revoke request is only honoured when its signature over
+    "<offer_msg_id>_revoke" verifies against the offer's addr_from."""
+    key, addr = _maker_key_and_address()
+    listener = _fake_listener_with_offers()
+    listener.offers["id-A"]["addr_from"] = addr
+    listener.revoke_requests = {"id-A": _sign_message(key, "id-A_revoke")}
+    out = listener.get_orderbook_dict()
+    assert {o["msg_id"] for o in out["offers"]} == {"id-B"}
+    assert out["stats"]["revoked_offers_dropped"] == 1
+    assert out["stats"]["revokes_invalid_sig"] == 0
+
+
+def test_revoke_with_invalid_signature_keeps_offer():
+    """Revokes signed by a third party (address mismatch) must be ignored and
+    counted, so they can't censor live offers off the orderbook."""
+    key, _addr = _maker_key_and_address()
+    listener = _fake_listener_with_offers()
+    # Offer's addr_from is NOT the signer's address.
+    listener.revoke_requests = {
+        "id-A": _sign_message(key, "id-A_revoke"),  # wrong signer
+        "id-B": b"\x00" * 65,                       # garbage signature
+    }
+    out = listener.get_orderbook_dict()
+    assert {o["msg_id"] for o in out["offers"]} == {"id-A", "id-B"}
+    assert out["stats"]["revoked_offers_dropped"] == 0
+    assert out["stats"]["revokes_invalid_sig"] == 2
+
+
 def test_bid_message_parses_extended_fields():
     """BidMessage must decode amount / amount_to / rate / time_valid alongside offer_msg_id."""
     fake_offer_id = bytes.fromhex("cd" * 28)

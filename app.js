@@ -727,6 +727,8 @@ function renderAdvanced(){
     {k:'Snapshot age',     v: age!=null ? f.ageShort(age) : '—', tip:'Time since the public stats snapshot was rebuilt. Refresh cron runs every 15 min.'},
     {k:'Listed offers',    v: f.int(d.num_offers||0),    tip:'All offers in the snapshot, including expired.'},
     {k:'Active offers',    v: f.int(d.active_offers||0), tip:'Unexpired offers — the basis for every figure in this page.'},
+    {k:'Offers revoked',   v: f.int(s.revoked_offers_dropped||0), tip:'Offers withdrawn by their maker via a signed revoke message and filtered from this snapshot.'},
+    {k:'Invalid revokes',  v: f.int(s.revokes_invalid_sig||0), tip:'Revoke messages whose signature did not match the offer\u2019s maker address — ignored to prevent third-party censorship.'},
     {k:'Median spread',    v: medianSpread!=null ? medianSpread.toFixed(2)+'%' : '—', tip:'Liquidity-weighted median spread across active two-sided pairs.'},
     {k:'Scraper run',      v: h.duration_s!=null ? h.duration_s+'s' : '—', tip:'Wall time of the most recent scraper run (lower is better).'},
   ];

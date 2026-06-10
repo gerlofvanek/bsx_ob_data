@@ -138,7 +138,7 @@ def smsg_get_timestamp(msg: bytes) -> int:
 
 
 def smsg_get_id(msg: bytes) -> bytes:
-    ts = int.from_bytes(msg[11:19], byteorder="big")
+    ts = int.from_bytes(msg[11:19], byteorder="little")
     return ts.to_bytes(8, byteorder="big") + ripemd160(msg[8:])
 
 
@@ -160,6 +160,50 @@ def pkh_to_address(version_and_hash: bytes) -> str:
         else:
             break
     return result.decode("ascii")
+
+
+# Particl shares Bitcoin's signed-message magic (src/util/message.cpp).
+BITCOIN_MESSAGE_MAGIC = b"Bitcoin Signed Message:\n"
+
+
+def ser_compact_size(n: int) -> bytes:
+    if n < 253:
+        return n.to_bytes(1, "little")
+    if n <= 0xFFFF:
+        return b"\xfd" + n.to_bytes(2, "little")
+    if n <= 0xFFFFFFFF:
+        return b"\xfe" + n.to_bytes(4, "little")
+    return b"\xff" + n.to_bytes(8, "little")
+
+
+def signed_message_hash(message: bytes) -> bytes:
+    data = (ser_compact_size(len(BITCOIN_MESSAGE_MAGIC)) + BITCOIN_MESSAGE_MAGIC
+            + ser_compact_size(len(message)) + message)
+    return sha256(sha256(data))
+
+
+def verify_signed_message(address: str, message: str, signature: bytes) -> bool:
+    """Verify a Bitcoin-style compact signed message against a Particl P2PKH address,
+    without an RPC node (mirrors Particl's verifymessage). Used to check that an
+    OfferRevokeMessage signature over "<offer_msg_id>_revoke" was produced by the
+    offer's addr_from, as basicswap.processOfferRevoke does."""
+    if not address or len(signature) != 65:
+        return False
+    header = signature[0]
+    if header < 27 or header > 34:  # 27-30 uncompressed, 31-34 compressed P2PKH
+        return False
+    recid = (header - 27) & 3
+    compressed = header >= 31
+    try:
+        pub = PublicKey.from_signature_and_message(
+            signature[1:] + bytes([recid]),
+            signed_message_hash(message.encode("ascii")),
+            hasher=None,
+        )
+    except Exception:
+        return False
+    pkh = hash160(pub.format(compressed=compressed))
+    return pkh_to_address(b"\x38" + pkh) == address
 
 
 def smsg_decrypt(privkey: bytes, encrypted_message: bytes) -> dict:
@@ -475,9 +519,12 @@ class BSXOfferListener(P2PInterface):
         # sent). Lets the orderbook expose the highest *active* open bid per offer, which takers
         # care about more than the raw count.
         self.bids_per_offer = {}
-        # Offer ids the maker has explicitly revoked via OFFER_REVOKE; filtered out of the
-        # published orderbook so consumers don't act on dead listings.
+        # Offer ids considered revoked without further checks (manual/test override).
         self.revoked_offer_ids = set()
+        # Map of offer_msg_id -> revoke signature from OFFER_REVOKE messages. Verified
+        # lazily in get_orderbook_dict (the offer's addr_from may not be known yet when
+        # the revoke arrives); only offers with a valid maker signature are dropped.
+        self.revoke_requests = {}
         # Track most-recent BSX message timestamp seen, surfaced in JSON for liveness.
         self.last_bsx_msg_ts = 0
 
@@ -602,13 +649,18 @@ class BSXOfferListener(P2PInterface):
                         pass
                     continue
                 # Record explicit revocations so we can drop dead offers before publishing.
+                # The signature is kept and verified at publish time against the offer's
+                # addr_from, so third parties can't censor offers off the orderbook.
                 if msg_type == MessageTypes.OFFER_REVOKE:
                     try:
                         rev_data = bytes.fromhex(payload_hex[2:])
                         rm = OfferRevokeMessage(); rm.from_bytes(rev_data)
                         oid = getattr(rm, "offer_msg_id", b"")
+                        sig = getattr(rm, "signature", b"")
                         if isinstance(oid, (bytes, bytearray)) and oid:
-                            self.revoked_offer_ids.add(oid.hex())
+                            self.revoke_requests[oid.hex()] = (
+                                bytes(sig) if isinstance(sig, (bytes, bytearray)) else b""
+                            )
                     except Exception:
                         pass
                     continue
@@ -676,16 +728,27 @@ class BSXOfferListener(P2PInterface):
         now = int(time.time())
         # Tolerate listeners constructed without going through __init__ (test fixtures).
         revoked = getattr(self, "revoked_offer_ids", set()) or set()
+        revoke_requests = getattr(self, "revoke_requests", {}) or {}
         bids_per_offer = getattr(self, "bids_per_offer", {}) or {}
         offers = []
         revoked_dropped = 0
+        revokes_invalid_sig = 0
         for o in self.offers.values():
-            if o.get("msg_id", "") in revoked:
+            mid = o.get("msg_id", "")
+            if mid in revoked:
                 revoked_dropped += 1
                 continue
+            if mid in revoke_requests:
+                # Honour the revoke only if its signature over "<offer_msg_id>_revoke"
+                # verifies against the offer's maker address (as basicswap does).
+                if verify_signed_message(
+                    o.get("addr_from", ""), mid + "_revoke", revoke_requests[mid]
+                ):
+                    revoked_dropped += 1
+                    continue
+                revokes_invalid_sig += 1
             o2 = dict(o)
             # Attach observed bid count for this offer (defaults to 0 when no BIDs seen).
-            mid = o2.get("msg_id", "")
             o2["bid_count"] = self.bid_counts.get(mid, 0)
             # Compute the highest *active* open bid (max amount_to, the side the maker receives).
             # Active = sent + time_valid > now. Falls back to None if no live bids.
@@ -723,6 +786,7 @@ class BSXOfferListener(P2PInterface):
         active = sum(1 for o in offers if (o.get("timestamp", 0) + o.get("time_valid", 0)) > now)
         # Record how many offers were suppressed so /health and the UI can show coverage.
         self.stats["revoked_offers_dropped"] = revoked_dropped
+        self.stats["revokes_invalid_sig"] = revokes_invalid_sig
         return {
             "timestamp": now,
             "updated_at": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(now)),
@@ -759,6 +823,10 @@ def main():
                              "and update <history-dir>/manifest.json")
     parser.add_argument("--health-file",
                         help="If set, write a small liveness JSON (last-run + msg rate) here")
+    parser.add_argument("--state-file",
+                        help="If set, persist observed offer revocations here (JSON) so a "
+                             "revoke seen in one run still suppresses the offer in later "
+                             "runs that miss the revoke message")
     args = parser.parse_args()
 
     if args.debug:
@@ -766,6 +834,18 @@ def main():
 
     # Decode network key
     privkey = decode_wif_privkey(NETWORK_KEY_WIF)
+
+    # Load persisted revoke requests (oid_hex -> {"sig": hex, "first_seen": ts}).
+    revoke_state = {}
+    if args.state_file:
+        try:
+            with open(args.state_file) as f:
+                revoke_state = json.load(f).get("revoke_requests", {})
+            log.info(f"Loaded {len(revoke_state)} revoke request(s) from {args.state_file}")
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            log.warning(f"state-file read failed: {e}")
 
     # Build the candidate peer list. --auto used to pick only the first resolved peer; we now
     # try each in turn so a single dead/refused IP doesn't abort the whole scrape.
@@ -797,6 +877,11 @@ def main():
         for idx, (cand_ip, cand_port) in enumerate(candidates):
             log.info(f"[{idx + 1}/{len(candidates)}] Trying peer {cand_ip}:{cand_port}")
             listener = BSXOfferListener(privkey)
+            for oid, ent in revoke_state.items():
+                try:
+                    listener.revoke_requests[oid] = bytes.fromhex(ent.get("sig", ""))
+                except Exception:
+                    pass
             listener.p2p_connected_to_node = True
             try:
                 listener.peer_connect(
@@ -842,6 +927,25 @@ def main():
         log.info(f"Saved {len(listener.offers)} offers to {args.output}")
     else:
         print(orderbook)
+
+    # Persist revoke requests so revokes outlive a single scrape window. Entries are
+    # pruned after 7 days - well past the max offer validity, so no offer they could
+    # apply to can still be live.
+    if args.state_file:
+        try:
+            now_ts = int(time.time())
+            merged = dict(revoke_state)
+            for oid, sig in listener.revoke_requests.items():
+                if oid not in merged:
+                    merged[oid] = {"sig": sig.hex(), "first_seen": now_ts}
+            cutoff = now_ts - 7 * 86400
+            merged = {k: v for k, v in merged.items()
+                      if int(v.get("first_seen", now_ts)) >= cutoff}
+            with open(args.state_file, "w") as f:
+                json.dump({"revoke_requests": merged}, f, indent=2)
+            log.info(f"Saved {len(merged)} revoke request(s) to {args.state_file}")
+        except Exception as e:
+            log.warning(f"state-file write failed: {e}")
 
     # Snapshot manifest: <history-dir>/<UTC-iso>.json + manifest.json with last 200 entries.
     if args.history_dir:

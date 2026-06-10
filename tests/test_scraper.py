@@ -142,3 +142,7 @@ def test_smsg_get_id_and_timestamp_consistent():
     assert smsg_get_timestamp(bytes(buf)) == ts
     msg_id = smsg_get_id(bytes(buf))
     assert len(msg_id) == 28  # 8 ts + 20 hash
+    # Prefix must be the timestamp re-encoded big-endian (matches
+    # basicswap/util/smsg.py::smsgGetID), else revoke/bid offer_msg_id
+    # references never match our offer ids.
+    assert msg_id[:8] == ts.to_bytes(8, "big")
