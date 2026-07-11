@@ -137,6 +137,17 @@ function makerChipStyle(addr){
   if(!c) return '';
   return `background:${c.bg};border:1px solid ${c.border};color:${c.text};padding:1px 5px;border-radius:3px;`;
 }
+function makerTooltipHtml(addr, msgId){
+  const id = escAttr(msgId || '—');
+  const parts = [];
+  if(addr){
+    parts.push(`<div class='tip-row'><span class='tip-label'>Maker</span><span class='tip-mono tip-break'>${escAttr(addr)}</span></div>`);
+  }
+  parts.push(`<div class='tip-row'><span class='tip-label'>Offer ID</span><span class='tip-mono tip-break'>${id}</span></div>`);
+  if(addr) parts.push("<div class='tip-hint'>Click to filter by this maker</div>");
+  return parts.join('');
+}
+const MAKER_TIP_ATTRS = 'data-tippy-allowhtml="true" data-tippy-theme="maker" data-tippy-maxwidth="320"';
 function filterByMaker(addr){
   if(!addr) return;
   identityQuery = addr;
@@ -603,12 +614,10 @@ function renderOffers(){
     const expS = (o.timestamp + (o.time_valid||0)) - now;
     const addr = o.addr_from || '';
     const addrDisp = addr.length > 12 ? addr.slice(0, 10)+'…' : (addr || '—');
-    const makerTip = addr
-      ? `Maker: ${escAttr(addr)}&#10;Offer ID: ${escAttr(o.msg_id||'')}&#10;Click to filter by this maker`
-      : `Offer ID: ${escAttr(o.msg_id||'')}`;
+    const makerTip = makerTooltipHtml(addr, o.msg_id);
     const makerCell = addr
-      ? `<button type="button" class="font-mono text-[10px] cursor-pointer hover:underline" style="${makerChipStyle(addr)}" data-maker="${escAttr(addr)}" data-tippy-content="${makerTip}">${escAttr(addrDisp)}</button>`
-      : `<span class="text-slate-400" data-tippy-content="${makerTip}">—</span>`;
+      ? `<button type="button" class="font-mono text-[10px] cursor-pointer hover:underline" style="${makerChipStyle(addr)}" data-maker="${escAttr(addr)}" data-tippy-content="${makerTip}" ${MAKER_TIP_ATTRS}>${escAttr(addrDisp)}</button>`
+      : `<span class="text-slate-400" data-tippy-content="${makerTip}" ${MAKER_TIP_ATTRS}>—</span>`;
     return `<tr class="border-b border-slate-100 dark:border-ink-700/60 hover:bg-slate-50 dark:hover:bg-ink-700/40">
       <td class="py-2"><span class="inline-flex items-center gap-1.5">${coinDot(o.coin_from,'w-4 h-4 text-[8px]')}
         <span data-tippy-content="${f.coinFull(fa)} ${o.coin_from}">${f.coin(fa)} ${o.coin_from}</span></span></td>
