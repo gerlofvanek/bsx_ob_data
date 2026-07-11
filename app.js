@@ -81,6 +81,8 @@ let resolution      = '1';              // CoinGecko `days` param for market_cha
 let CUR             = null;             // {base, quote} of the selected pair
 let pollTimer       = null;
 let identityQuery   = '';             // filter offers by msg_id or addr_from
+let offersScope     = 'pair';         // 'pair' | 'all'
+const OFFERS_LIMIT  = { pair: 50, all: 100 };
 
 /* ============================================================================
    FORMATTERS
@@ -180,6 +182,38 @@ function makerTooltipHtml(addr, msgId, meta){
   return parts.join('');
 }
 const MAKER_TIP_ATTRS = 'data-tippy-allowhtml="true" data-tippy-theme="maker" data-tippy-maxwidth="320"';
+function offerRefMid(from, to){
+  const { bids, asks } = getBidsAsks(from, to);
+  if(bids.length && asks.length) return (bids[0].price + asks[0].price)/2;
+  if(asks.length) return asks[0].price;
+  if(bids.length) return bids[0].price;
+  return null;
+}
+function renderOffersTableHead(showAll){
+  const row = document.querySelector('#offers-table thead tr');
+  if(!row) return;
+  row.innerHTML = (showAll ? '<th class="py-2 font-medium">Pair</th>' : '') +
+    `<th class="py-2 font-medium">You send</th>
+     <th class="py-2 font-medium"></th>
+     <th class="py-2 font-medium">You get</th>
+     <th class="py-2 font-medium text-right">Est. value</th>
+     <th class="py-2 font-medium text-right">Rate</th>
+     <th class="py-2 font-medium text-right">vs market</th>
+     <th class="py-2 font-medium">Maker</th>
+     <th class="py-2 font-medium text-right">Expires</th>`;
+}
+function setOffersScope(scope){
+  offersScope = scope === 'all' ? 'all' : 'pair';
+  const on = 'px-2 py-1 rounded-md bg-white dark:bg-ink-600 shadow-sm';
+  const off = 'px-2 py-1 rounded-md text-slate-500 dark:text-slate-400';
+  const pairBtn = document.getElementById('offers-scope-pair');
+  const allBtn = document.getElementById('offers-scope-all');
+  if(pairBtn) pairBtn.className = offersScope === 'pair' ? on : off;
+  if(allBtn) allBtn.className = offersScope === 'all' ? on : off;
+  try{ localStorage.setItem('bsx-mkts-offers-scope', offersScope); } catch(e){}
+  renderOffers();
+  refreshTips();
+}
 function filterByMaker(addr){
   if(!addr) return;
   identityQuery = addr;
@@ -595,45 +629,70 @@ function tag(label, cls){
   return `<span class="px-1.5 py-0.5 rounded text-[10px] ${cls}" data-tippy-content="${tip}">${label}</span>`;
 }
 function renderOffers(){
-  if(!CUR) return;
-  const { base, quote } = CUR;
-  const pairRows = liveOffers().filter(o =>
-    (o.coin_from===base && o.coin_to===quote) ||
-    (o.coin_from===quote && o.coin_to===base)
-  );
+  const showAll = offersScope === 'all';
+  if(!showAll && !CUR) return;
+  renderOffersTableHead(showAll);
+  const cols = showAll ? 9 : 8;
+  const limit = OFFERS_LIMIT[showAll ? 'all' : 'pair'];
+
+  let pool = liveOffers();
+  if(!showAll){
+    const { base, quote } = CUR;
+    pool = pool.filter(o =>
+      (o.coin_from===base && o.coin_to===quote) ||
+      (o.coin_from===quote && o.coin_to===base)
+    );
+  }
+
   const q = identityQuery.trim();
-  const rows = q ? pairRows.filter(o => matchesIdentity(o, q)) : pairRows;
-  const bUsd = coinUsd(base);
-  const refRate = (function(){
-    // mid of best bid + best ask in QUOTE per BASE (same units as ask.price/bid.price).
+  let rows = q ? pool.filter(o => matchesIdentity(o, q)) : pool.slice();
+  if(showAll) rows.sort((a, b) => offerUsdSize(b) - offerUsdSize(a));
+
+  const pairRefRate = (!showAll && CUR) ? (function(){
     const { bids, asks } = window._book || {bids:[],asks:[]};
     if(bids.length && asks.length) return (bids[0].price + asks[0].price)/2;
     if(bids.length) return bids[0].price;
     if(asks.length) return asks[0].price;
     return null;
-  })();
+  })() : null;
+
   const countEl = document.getElementById('offers-count');
   if(countEl){
-    if(!pairRows.length) countEl.textContent = '· none live';
-    else if(q && rows.length !== pairRows.length)
-      countEl.textContent = `· showing ${rows.length} of ${pairRows.length} (filtered)`;
+    const scope = showAll ? 'all listings' : 'this pair';
+    if(!pool.length) countEl.textContent = '· none live';
+    else if(rows.length > limit)
+      countEl.textContent = `· showing ${limit} of ${rows.length}${q ? ' (filtered)' : ''} · ${scope}`;
+    else if(q && rows.length !== pool.length)
+      countEl.textContent = `· showing ${rows.length} of ${pool.length} (filtered) · ${scope}`;
     else if(q)
-      countEl.textContent = `· showing ${rows.length} (filtered)`;
+      countEl.textContent = `· showing ${rows.length} (filtered) · ${scope}`;
     else
-      countEl.textContent = `· showing ${pairRows.length} (all live for this pair)`;
+      countEl.textContent = `· showing ${rows.length} · ${scope}`;
   }
 
   const now = Math.floor(Date.now()/1000);
   const emptyMsg = q
-    ? `No offers match “${escAttr(q)}” for this pair.`
-    : 'No live offers for this pair.';
-  document.getElementById('offers-body').innerHTML = rows.slice(0, 50).map(o=>{
+    ? `No offers match “${escAttr(q)}”${showAll ? '' : ' for this pair'}.`
+    : (showAll ? 'No live offers across the network.' : 'No live offers for this pair.');
+
+  document.getElementById('offers-body').innerHTML = rows.slice(0, limit).map(o=>{
     const fa = parseFloat(o.amount_from_str)||0, ta = parseFloat(o.amount_to_str)||0;
     const usd = (coinUsd(o.coin_from)*fa) || (coinUsd(o.coin_to)*ta) || 0;
-    const rateQuotePerBase = (o.coin_from===base) ? (ta/fa) : (fa/ta);
+    let rateQuotePerBase, rateLabel, refRate, side;
+    if(showAll){
+      rateQuotePerBase = fa ? ta/fa : null;
+      rateLabel = `${o.coin_to}/${o.coin_from}`;
+      refRate = offerRefMid(o.coin_from, o.coin_to);
+      side = 1;
+    } else {
+      const { base, quote } = CUR;
+      rateQuotePerBase = (o.coin_from===base) ? (ta/fa) : (fa/ta);
+      rateLabel = `${quote}/${base}`;
+      refRate = pairRefRate;
+      side = (o.coin_from===base) ? 1 : -1;
+    }
     let mkt = null;
     if(refRate && rateQuotePerBase){
-      const side = (o.coin_from===base) ? 1 : -1;        // asks vs bids
       mkt = ((rateQuotePerBase - refRate)/refRate)*100*side;
     }
     const mktCls = mkt===null ? 'text-slate-400' : (Math.abs(mkt)<1 ? 'text-slate-400' : (mkt>=0?'text-emerald-500':'text-rose-500'));
@@ -654,22 +713,26 @@ function renderOffers(){
     const makerCell = addr
       ? `<span class="inline-flex items-center gap-1">${makerLogoHtml(meta)}${makerBtn}</span>`
       : makerBtn;
+    const pairCell = showAll
+      ? `<td class="py-2"><button type="button" class="inline-flex items-center gap-1 font-semibold text-brand hover:underline offers-pick-pair" data-base="${escAttr(o.coin_from)}" data-quote="${escAttr(o.coin_to)}">${coinDot(o.coin_from,'w-4 h-4 text-[8px]')}${coinDot(o.coin_to,'w-4 h-4 text-[8px] -ml-1')}<span>${o.coin_from}/${o.coin_to}</span></button></td>`
+      : '';
     return `<tr class="border-b border-slate-100 dark:border-ink-700/60 hover:bg-slate-50 dark:hover:bg-ink-700/40">
+      ${pairCell}
       <td class="py-2"><span class="inline-flex items-center gap-1.5">${coinDot(o.coin_from,'w-4 h-4 text-[8px]')}
         <span data-tippy-content="${f.coinFull(fa)} ${o.coin_from}">${f.coin(fa)} ${o.coin_from}</span></span></td>
       <td class="py-2 text-slate-400">→</td>
       <td class="py-2"><span class="inline-flex items-center gap-1.5">${coinDot(o.coin_to,'w-4 h-4 text-[8px]')}
         <span data-tippy-content="${f.coinFull(ta)} ${o.coin_to}">${f.coin(ta)} ${o.coin_to}</span></span></td>
       <td class="py-2 text-right">${usd?f.fiat(usd):'—'}</td>
-      <td class="py-2 text-right text-slate-400" data-tippy-content="${f.coinFull(rateQuotePerBase)} ${quote}/${base}">${f.coin(rateQuotePerBase)}</td>
+      <td class="py-2 text-right text-slate-400" data-tippy-content="${rateQuotePerBase!=null?f.coinFull(rateQuotePerBase)+' '+rateLabel:''}">${rateQuotePerBase!=null?f.coin(rateQuotePerBase):'—'}</td>
       <td class="py-2 text-right ${mktCls}">${mktStr}</td>
       <td class="py-2">${makerCell}</td>
       <td class="py-2 text-right text-slate-400">${expS>0?f.ageShort(expS):'expired'}</td>
     </tr>
-    <tr class="border-b border-slate-100 dark:border-ink-700/60"><td colspan="8" class="pb-2 pl-0">
+    <tr class="border-b border-slate-100 dark:border-ink-700/60"><td colspan="${cols}" class="pb-2 pl-0">
       <span class="inline-flex gap-1 flex-wrap">${tag(typeLabel,'bg-brand/15 text-brand')}${flags.map(fl=>tag(fl,'bg-slate-200 dark:bg-ink-700 text-slate-500 dark:text-slate-300')).join('')}</span>
     </td></tr>`;
-  }).join('') || `<tr><td colspan="8" class="py-8 text-center text-slate-400 text-sm">${emptyMsg}</td></tr>`;
+  }).join('') || `<tr><td colspan="${cols}" class="py-8 text-center text-slate-400 text-sm">${emptyMsg}</td></tr>`;
 }
 
 
@@ -898,7 +961,7 @@ async function fetchOrderbook(){
   } catch(e){
     console.error('Orderbook fetch failed:', e);
     const ob = document.getElementById('offers-body');
-    if(ob) ob.innerHTML = '<tr><td colspan="8" class="py-8 text-center text-rose-500 text-sm">Failed to load orderbook.json — '+(e.message||e)+'</td></tr>';
+    if(ob) ob.innerHTML = '<tr><td colspan="9" class="py-8 text-center text-rose-500 text-sm">Failed to load orderbook.json — '+(e.message||e)+'</td></tr>';
     updateFreshnessPill();
   }
 }
@@ -956,7 +1019,16 @@ function wire(){
       refreshTips();
     });
   }
+  document.getElementById('offers-scope-pair')?.addEventListener('click', ()=> setOffersScope('pair'));
+  document.getElementById('offers-scope-all')?.addEventListener('click', ()=> setOffersScope('all'));
   document.getElementById('offers-body')?.addEventListener('click', e=>{
+    const pairBtn = e.target.closest('.offers-pick-pair');
+    if(pairBtn){
+      e.preventDefault();
+      selectPair(pairBtn.dataset.base, pairBtn.dataset.quote);
+      setOffersScope('pair');
+      return;
+    }
     const btn = e.target.closest('[data-maker]');
     if(!btn) return;
     e.preventDefault();
@@ -978,7 +1050,9 @@ function wire(){
    ============================================================================ */
 (async function init(){
   try{ const u = localStorage.getItem('bsx-mkts-unit'); if(u==='usd'||u==='coin') unit = u; } catch(e){}
+  try{ const s = localStorage.getItem('bsx-mkts-offers-scope'); if(s==='all'||s==='pair') offersScope = s; } catch(e){}
   wire();
+  setOffersScope(offersScope);
   loadCachedPrices();
   await Promise.all([fetchPrices(), fetchSnapshotManifest(), fetchHealth()]);
   await fetchOrderbook();
