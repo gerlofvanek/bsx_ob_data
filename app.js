@@ -1046,12 +1046,15 @@ function wire(){
     xmrDonate.addEventListener('click', async ()=>{
       const addr = xmrDonate.dataset.address;
       if(!addr) return;
-      const label = xmrDonate.querySelector('[data-copy-label]');
+      const labels = [...xmrDonate.querySelectorAll('[data-copy-label]')];
+      const prev = labels.map(el => el.textContent);
       try{
         await navigator.clipboard.writeText(addr);
-        if(label){ const prev = label.textContent; label.textContent = 'Copied!'; setTimeout(()=>{ label.textContent = prev; }, 1500); }
+        labels.forEach(el => { el.textContent = 'Copied!'; });
+        setTimeout(()=> labels.forEach((el, i)=> { el.textContent = prev[i]; }), 1500);
       }catch(e){
-        if(label){ const prev = label.textContent; label.textContent = 'Copy failed'; setTimeout(()=>{ label.textContent = prev; }, 1500); }
+        labels.forEach(el => { el.textContent = 'Copy failed'; });
+        setTimeout(()=> labels.forEach((el, i)=> { el.textContent = prev[i]; }), 1500);
       }
     });
   }
