@@ -142,6 +142,20 @@ def smsg_get_id(msg: bytes) -> bytes:
     return ts.to_bytes(8, byteorder="big") + ripemd160(msg[8:])
 
 
+def legacy_to_canonical_id(mid_hex: str) -> str:
+    """Convert a message id written by pre-fix scrapers (timestamp prefix kept in
+    little-endian wire order) to the canonical big-endian form by reversing the
+    first 8 bytes. Applied to an already-canonical id it yields an id that matches
+    nothing, so callers can safely try both forms."""
+    try:
+        b = bytes.fromhex(mid_hex)
+    except ValueError:
+        return mid_hex
+    if len(b) != SMSG_ID_LEN:
+        return mid_hex
+    return (b[:8][::-1] + b[8:]).hex()
+
+
 B58_ALPHABET = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 
 
@@ -803,6 +817,79 @@ class BSXOfferListener(P2PInterface):
         return json.dumps(self.get_orderbook_dict(anonymize_makers), indent=2)
 
 
+def clean_history_snapshots(history_dir: str, revoke_requests: dict, live_offers: dict) -> int:
+    """Retroactively remove revoked offers from existing history snapshots and fix
+    the manifest counts. Matches both canonical msg ids and the byte-swapped legacy
+    form written by pre-fix scrapers. A revoke is only honoured when its signature
+    verifies against the snapshot offer's addr_from (or the live offer's, when the
+    snapshot copy was anonymized). Returns the number of offers removed."""
+    manifest_path = os.path.join(history_dir, "manifest.json")
+    try:
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+    except Exception:
+        return 0
+
+    verified = set()
+
+    def is_revoked(canon_id: str, addr: str) -> bool:
+        if canon_id in verified:
+            return True
+        sig = revoke_requests.get(canon_id, b"")
+        if not sig:
+            return False
+        message = canon_id + "_revoke"
+        live_addr = (live_offers.get(canon_id) or {}).get("addr_from", "")
+        for candidate in (addr, live_addr):
+            if candidate and verify_signed_message(candidate, message, sig):
+                verified.add(canon_id)
+                return True
+        return False
+
+    removed_total = 0
+    for entry in manifest.get("snapshots", []):
+        path = os.path.join(history_dir, entry.get("file", ""))
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path) as f:
+                snap = json.load(f)
+        except Exception:
+            continue
+        kept, removed = [], 0
+        for o in snap.get("offers", []):
+            mid = o.get("msg_id", "")
+            if any(is_revoked(c, o.get("addr_from", ""))
+                   for c in {mid, legacy_to_canonical_id(mid)}):
+                removed += 1
+            else:
+                kept.append(o)
+        if not removed:
+            continue
+        snap_ts = snap.get("timestamp", 0)
+        snap["offers"] = kept
+        snap["num_offers"] = len(kept)
+        snap["active_offers"] = sum(
+            1 for o in kept
+            if (o.get("timestamp", 0) + o.get("time_valid", 0)) > snap_ts)
+        with open(path, "w") as f:
+            json.dump(snap, f, indent=2)
+        pair_counts = {}
+        for o in kept:
+            cf, ct = o.get("coin_from"), o.get("coin_to")
+            if cf and ct:
+                key = "/".join(sorted([cf, ct]))
+                pair_counts[key] = pair_counts.get(key, 0) + 1
+        entry["num_offers"] = snap["num_offers"]
+        entry["active_offers"] = snap["active_offers"]
+        entry["pair_counts"] = pair_counts
+        removed_total += removed
+
+    if removed_total:
+        with open(manifest_path, "w") as f:
+            json.dump(manifest, f, indent=2)
+    return removed_total
+
 
 # ============================================================================
 # Main
@@ -980,6 +1067,13 @@ def main():
             with open(manifest_path, "w") as f:
                 json.dump(manifest, f, indent=2)
             log.info(f"Wrote snapshot {snap_name} + updated manifest")
+            # Retroactively scrub offers from older snapshots whose revoke we have
+            # since observed (covers snapshots written before a revoke arrived and
+            # pre-fix snapshots with byte-swapped msg ids).
+            removed = clean_history_snapshots(
+                args.history_dir, listener.revoke_requests, listener.offers)
+            if removed:
+                log.info(f"Retro-removed {removed} revoked offer(s) from history snapshots")
         except Exception as e:
             log.warning(f"history-dir write failed: {e}")
 

@@ -71,6 +71,7 @@ let unit            = 'usd';            // 'usd' | 'coin'
 let resolution      = '1';              // CoinGecko `days` param for market_chart
 let CUR             = null;             // {base, quote} of the selected pair
 let pollTimer       = null;
+let identityQuery   = '';             // filter offers by msg_id or addr_from
 
 /* ============================================================================
    FORMATTERS
@@ -118,6 +119,33 @@ function offerUsdSize(o){ const p = coinUsd(o.coin_from); return p ? parseFloat(
 function pairKey(a,b){ return a<b ? a+'/'+b : b+'/'+a; }
 function isExpired(o){ return (o.timestamp + (o.time_valid||0)) <= Math.floor(Date.now()/1000); }
 function liveOffers(){ return allOffers.filter(o => !isExpired(o)); }
+function escAttr(s){ return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+function matchesIdentity(o, q){
+  if(!q) return true;
+  q = q.toLowerCase();
+  return (o.msg_id||'').toLowerCase().includes(q) || (o.addr_from||'').toLowerCase().includes(q);
+}
+function makerColor(addr){
+  if(!addr) return null;
+  let h = 0;
+  for(let i = 0; i < addr.length; i++) h = (h*31 + addr.charCodeAt(i)) >>> 0;
+  const hue = h % 360;
+  return { bg:`hsla(${hue},65%,55%,0.18)`, border:`hsla(${hue},65%,55%,0.55)`, text:`hsl(${hue},75%,72%)` };
+}
+function makerChipStyle(addr){
+  const c = makerColor(addr);
+  if(!c) return '';
+  return `background:${c.bg};border:1px solid ${c.border};color:${c.text};padding:1px 5px;border-radius:3px;`;
+}
+function filterByMaker(addr){
+  if(!addr) return;
+  identityQuery = addr;
+  const inp = document.getElementById('identity-search');
+  if(inp) inp.value = addr;
+  renderOffers();
+  refreshTips();
+  document.getElementById('offers-body')?.scrollIntoView({ behavior:'smooth', block:'start' });
+}
 
 function coinDot(sym, cls='w-5 h-5 text-[10px]'){
   const m = coinMeta(sym);
@@ -526,10 +554,12 @@ function tag(label, cls){
 function renderOffers(){
   if(!CUR) return;
   const { base, quote } = CUR;
-  const rows = liveOffers().filter(o =>
+  const pairRows = liveOffers().filter(o =>
     (o.coin_from===base && o.coin_to===quote) ||
     (o.coin_from===quote && o.coin_to===base)
   );
+  const q = identityQuery.trim();
+  const rows = q ? pairRows.filter(o => matchesIdentity(o, q)) : pairRows;
   const bUsd = coinUsd(base);
   const refRate = (function(){
     // mid of best bid + best ask in QUOTE per BASE (same units as ask.price/bid.price).
@@ -539,10 +569,21 @@ function renderOffers(){
     if(asks.length) return asks[0].price;
     return null;
   })();
-  document.getElementById('offers-count').textContent =
-    rows.length ? `· showing ${rows.length} (all live for this pair)` : '· none live';
+  const countEl = document.getElementById('offers-count');
+  if(countEl){
+    if(!pairRows.length) countEl.textContent = '· none live';
+    else if(q && rows.length !== pairRows.length)
+      countEl.textContent = `· showing ${rows.length} of ${pairRows.length} (filtered)`;
+    else if(q)
+      countEl.textContent = `· showing ${rows.length} (filtered)`;
+    else
+      countEl.textContent = `· showing ${pairRows.length} (all live for this pair)`;
+  }
 
   const now = Math.floor(Date.now()/1000);
+  const emptyMsg = q
+    ? `No offers match “${escAttr(q)}” for this pair.`
+    : 'No live offers for this pair.';
   document.getElementById('offers-body').innerHTML = rows.slice(0, 50).map(o=>{
     const fa = parseFloat(o.amount_from_str)||0, ta = parseFloat(o.amount_to_str)||0;
     const usd = (coinUsd(o.coin_from)*fa) || (coinUsd(o.coin_to)*ta) || 0;
@@ -560,6 +601,14 @@ function renderOffers(){
     if(o.rate_negotiable)   flags.push('rate neg');
     if(o.auto_accept_type)  flags.push('auto-accept');
     const expS = (o.timestamp + (o.time_valid||0)) - now;
+    const addr = o.addr_from || '';
+    const addrDisp = addr.length > 12 ? addr.slice(0, 10)+'…' : (addr || '—');
+    const makerTip = addr
+      ? `Maker: ${escAttr(addr)}&#10;Offer ID: ${escAttr(o.msg_id||'')}&#10;Click to filter by this maker`
+      : `Offer ID: ${escAttr(o.msg_id||'')}`;
+    const makerCell = addr
+      ? `<button type="button" class="font-mono text-[10px] cursor-pointer hover:underline" style="${makerChipStyle(addr)}" data-maker="${escAttr(addr)}" data-tippy-content="${makerTip}">${escAttr(addrDisp)}</button>`
+      : `<span class="text-slate-400" data-tippy-content="${makerTip}">—</span>`;
     return `<tr class="border-b border-slate-100 dark:border-ink-700/60 hover:bg-slate-50 dark:hover:bg-ink-700/40">
       <td class="py-2"><span class="inline-flex items-center gap-1.5">${coinDot(o.coin_from,'w-4 h-4 text-[8px]')}
         <span data-tippy-content="${f.coinFull(fa)} ${o.coin_from}">${f.coin(fa)} ${o.coin_from}</span></span></td>
@@ -569,12 +618,13 @@ function renderOffers(){
       <td class="py-2 text-right">${usd?f.fiat(usd):'—'}</td>
       <td class="py-2 text-right text-slate-400" data-tippy-content="${f.coinFull(rateQuotePerBase)} ${quote}/${base}">${f.coin(rateQuotePerBase)}</td>
       <td class="py-2 text-right ${mktCls}">${mktStr}</td>
+      <td class="py-2">${makerCell}</td>
       <td class="py-2 text-right text-slate-400">${expS>0?f.ageShort(expS):'expired'}</td>
     </tr>
-    <tr class="border-b border-slate-100 dark:border-ink-700/60"><td colspan="7" class="pb-2 pl-0">
+    <tr class="border-b border-slate-100 dark:border-ink-700/60"><td colspan="8" class="pb-2 pl-0">
       <span class="inline-flex gap-1 flex-wrap">${tag(typeLabel,'bg-brand/15 text-brand')}${flags.map(fl=>tag(fl,'bg-slate-200 dark:bg-ink-700 text-slate-500 dark:text-slate-300')).join('')}</span>
     </td></tr>`;
-  }).join('') || '<tr><td colspan="7" class="py-8 text-center text-slate-400 text-sm">No live offers for this pair.</td></tr>';
+  }).join('') || `<tr><td colspan="8" class="py-8 text-center text-slate-400 text-sm">${emptyMsg}</td></tr>`;
 }
 
 
@@ -803,7 +853,7 @@ async function fetchOrderbook(){
   } catch(e){
     console.error('Orderbook fetch failed:', e);
     const ob = document.getElementById('offers-body');
-    if(ob) ob.innerHTML = '<tr><td colspan="7" class="py-8 text-center text-rose-500 text-sm">Failed to load orderbook.json — '+(e.message||e)+'</td></tr>';
+    if(ob) ob.innerHTML = '<tr><td colspan="8" class="py-8 text-center text-rose-500 text-sm">Failed to load orderbook.json — '+(e.message||e)+'</td></tr>';
     updateFreshnessPill();
   }
 }
@@ -853,6 +903,27 @@ function wire(){
     renderPriceChart();
   });
   const yr = document.getElementById('yr'); if(yr) yr.textContent = new Date().getFullYear();
+  const idSearch = document.getElementById('identity-search');
+  if(idSearch){
+    idSearch.addEventListener('input', ()=>{
+      identityQuery = idSearch.value.trim();
+      renderOffers();
+      refreshTips();
+    });
+  }
+  document.getElementById('offers-body')?.addEventListener('click', e=>{
+    const btn = e.target.closest('[data-maker]');
+    if(!btn) return;
+    e.preventDefault();
+    filterByMaker(btn.dataset.maker);
+  });
+  document.addEventListener('keydown', e=>{
+    if(e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target;
+    if(t && (t.tagName==='INPUT' || t.tagName==='TEXTAREA' || t.isContentEditable)) return;
+    e.preventDefault();
+    idSearch?.focus();
+  });
   // Keep the freshness pill ticking even between fetches.
   setInterval(updateFreshnessPill, 30*1000);
 }

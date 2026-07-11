@@ -209,12 +209,18 @@
     </div>
 
     <div class="border-t border-slate-200 dark:border-ink-600 p-5">
-      <div class="flex items-center justify-between mb-3">
+      <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
         <h3 class="text-sm font-semibold">Open offers <span id="offers-count" class="text-slate-400 font-normal"></span></h3>
-        <span class="text-xs text-slate-400">hover any amount for full precision</span>
+        <div class="flex items-center gap-2">
+          <input id="identity-search" type="search" placeholder="Search offer ID or maker… (/ to focus)"
+            aria-label="Filter by offer ID or maker address"
+            class="w-44 sm:w-56 text-xs rounded-lg px-3 py-1.5 border border-slate-200 dark:border-ink-600 bg-white dark:bg-ink-700 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:border-brand font-mono"
+            spellcheck="false" autocomplete="off" />
+          <span class="text-xs text-slate-400 hidden sm:inline">hover amounts for precision · click maker to filter</span>
+        </div>
       </div>
       <div class="overflow-x-auto">
-        <table class="w-full text-xs tabular min-w-[680px]">
+        <table class="w-full text-xs tabular min-w-[760px]">
           <thead class="text-slate-400 text-left border-b border-slate-200 dark:border-ink-600">
             <tr>
               <th class="py-2 font-medium">You send</th>
@@ -223,6 +229,7 @@
               <th class="py-2 font-medium text-right">Est. value</th>
               <th class="py-2 font-medium text-right">Rate</th>
               <th class="py-2 font-medium text-right">vs market</th>
+              <th class="py-2 font-medium">Maker</th>
               <th class="py-2 font-medium text-right">Expires</th>
             </tr>
           </thead>
