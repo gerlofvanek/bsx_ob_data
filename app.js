@@ -148,21 +148,23 @@ function makerChipStyle(addr){
 }
 function knownMaker(addr){
   if(!addr) return null;
-  if(KNOWN_MAKERS[addr]) return KNOWN_MAKERS[addr];
-  const trunc = addr.match(/^(.{4})[\u2026.]{1,3}(.{4})$/);
-  if(!trunc) return null;
-  const [, pre, suf] = trunc;
+  const a = String(addr).trim();
   for(const [full, meta] of Object.entries(KNOWN_MAKERS)){
-    if(full.startsWith(pre) && full.endsWith(suf)) return meta;
+    if(a === full) return meta;
+    const pre = full.slice(0, 4);
+    const suf = full.slice(-4);
+    if(a.length >= 9 && a.startsWith(pre) && a.endsWith(suf)) return meta;
   }
   return null;
 }
 function makerLogoHtml(meta){
   if(!meta?.logo) return '';
   const tip = escAttr(meta.name);
-  const img = `<img src="${escAttr(meta.logo)}" alt="${escAttr(meta.name)}" class="maker-logo" width="14" height="14" data-tippy-content="${tip}" />`;
-  if(!meta.url) return img;
-  return `<a href="${escAttr(meta.url)}" target="_blank" rel="noopener noreferrer" class="inline-flex flex-shrink-0 rounded-sm hover:opacity-80" aria-label="${escAttr(meta.name)}">${img}</a>`;
+  const img = `<img src="${escAttr(meta.logo)}" alt="${escAttr(meta.name)}" class="maker-logo" width="18" height="18" data-tippy-content="${tip}" />`;
+  const inner = meta.url
+    ? `<a href="${escAttr(meta.url)}" target="_blank" rel="noopener noreferrer" class="maker-logo-wrap hover:opacity-90" aria-label="${escAttr(meta.name)}" onclick="event.stopPropagation()">${img}</a>`
+    : `<span class="maker-logo-wrap">${img}</span>`;
+  return inner;
 }
 function makerTooltipHtml(addr, msgId, meta){
   const id = escAttr(msgId || '—');
