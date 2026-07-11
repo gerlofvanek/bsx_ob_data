@@ -290,21 +290,23 @@
       <svg class="w-3.5 h-3.5 text-rose-500" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="love"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
       by <a href="https://github.com/gerlofvanek" target="_blank" rel="noopener noreferrer" class="hover:text-brand hover:underline underline-offset-2">crz</a>
     </div>
-    <div class="flex flex-col items-center gap-1.5 px-4">
-      <div class="inline-flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
-        <svg class="w-3.5 h-3.5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 11h1a3 3 0 0 1 0 6h-1"/><path d="M9 12v6"/><path d="M13 12v6"/><path d="M14 7.5c-1 0-1.44.5-3 .5s-2-.5-3-.5-1.72.5-2.5.5a2.5 2.5 0 0 1 0-5c.78 0 1.57.5 2.5.5S9.44 3 11 3s2 1.5 3 1.5a2.5 2.5 0 0 1 0 5c-.78 0-1.5-.5-2.5-.5Z"/><path d="M5 8v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8"/></svg>
-        <svg class="w-3.5 h-3.5 text-amber-700 dark:text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2v2"/><path d="M14 2v2"/><path d="M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1"/><path d="M6 2v2"/></svg>
-        <span>Buy me a beer or coffee</span>
+    <div class="px-4 pt-1">
+      <div class="mx-auto max-w-4xl rounded-xl border border-slate-200 dark:border-ink-600 bg-white/70 dark:bg-ink-800/70 px-4 py-3 shadow-sm">
+        <div class="flex items-center justify-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">
+          <span class="text-base leading-none" aria-hidden="true">🍺</span>
+          <span class="text-base leading-none" aria-hidden="true">☕</span>
+          <span>Buy me a beer or coffee</span>
+        </div>
+        <button id="xmr-donate" type="button"
+          data-address="85QDdyVftCW9zvwiVcR19eG4LhCejpRcM45yQHGLPKnxGs9p2iu5RxEB4C2KXRDFoZFL742gpiUKfGTA1ge1v8cMQRRUbW6"
+          data-tippy-content="Click to copy Monero address"
+          class="inline-flex items-center gap-1.5 w-full rounded-lg border border-slate-200 dark:border-ink-600 bg-white dark:bg-ink-900/60 px-2.5 py-1.5 font-mono text-[10px] md:text-[11px] text-slate-600 dark:text-slate-300"
+          aria-label="Copy Monero donation address">
+          <img src="images/logos/xmr.png" alt="" class="w-4 h-4 rounded-full flex-shrink-0" width="16" height="16" />
+          <span data-copy-label class="md:hidden">85QDdy…UbW6</span>
+          <span data-copy-label class="hidden md:inline break-all text-left leading-snug">85QDdyVftCW9zvwiVcR19eG4LhCejpRcM45yQHGLPKnxGs9p2iu5RxEB4C2KXRDFoZFL742gpiUKfGTA1ge1v8cMQRRUbW6</span>
+        </button>
       </div>
-      <button id="xmr-donate" type="button"
-        data-address="85QDdyVftCW9zvwiVcR19eG4LhCejpRcM45yQHGLPKnxGs9p2iu5RxEB4C2KXRDFoZFL742gpiUKfGTA1ge1v8cMQRRUbW6"
-        data-tippy-content="Click to copy Monero address"
-        class="inline-flex items-center gap-1.5 w-full max-w-[calc(100%-2rem)] md:max-w-4xl rounded-lg border border-slate-200 dark:border-ink-600 bg-white/60 dark:bg-ink-800/60 px-2.5 py-1 font-mono text-[10px] md:text-[11px] text-slate-600 dark:text-slate-300"
-        aria-label="Copy Monero donation address">
-        <img src="images/logos/xmr.png" alt="" class="w-4 h-4 rounded-full flex-shrink-0" width="16" height="16" />
-        <span data-copy-label class="md:hidden">85QDdy…UbW6</span>
-        <span data-copy-label class="hidden md:inline break-all text-left leading-snug">85QDdyVftCW9zvwiVcR19eG4LhCejpRcM45yQHGLPKnxGs9p2iu5RxEB4C2KXRDFoZFL742gpiUKfGTA1ge1v8cMQRRUbW6</span>
-      </button>
     </div>
   </footer>
 </main>
