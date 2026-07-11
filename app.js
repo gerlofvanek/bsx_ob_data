@@ -1041,6 +1041,20 @@ function wire(){
     e.preventDefault();
     idSearch?.focus();
   });
+  const xmrDonate = document.getElementById('xmr-donate');
+  if(xmrDonate){
+    xmrDonate.addEventListener('click', async ()=>{
+      const addr = xmrDonate.dataset.address;
+      if(!addr) return;
+      const label = xmrDonate.querySelector('[data-copy-label]');
+      try{
+        await navigator.clipboard.writeText(addr);
+        if(label){ const prev = label.textContent; label.textContent = 'Copied!'; setTimeout(()=>{ label.textContent = prev; }, 1500); }
+      }catch(e){
+        if(label){ const prev = label.textContent; label.textContent = 'Copy failed'; setTimeout(()=>{ label.textContent = prev; }, 1500); }
+      }
+    });
+  }
   // Keep the freshness pill ticking even between fetches.
   setInterval(updateFreshnessPill, 30*1000);
 }

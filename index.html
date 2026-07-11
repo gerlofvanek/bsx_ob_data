@@ -78,6 +78,8 @@
   .dark #identity-search::-webkit-search-cancel-button {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3E%3Ccircle cx='10' cy='10' r='9' stroke='%2394a3b8' stroke-width='1.5'/%3E%3Cpath stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round' d='M7 7l6 6M13 7l-6 6'/%3E%3C/svg%3E");
   }
+  #xmr-donate { cursor: pointer; transition: color .15s, border-color .15s; }
+  #xmr-donate:hover { color: #ff6600; border-color: #ff660066; }
 </style>
 </head>
 
@@ -281,12 +283,23 @@
     <div id="adv-body" class="px-4 pb-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs"></div>
   </section>
 
-  <footer class="text-center text-xs text-slate-400 py-6 space-y-1">
+  <footer class="text-center text-xs text-slate-400 py-6 space-y-2">
     <div>© <span id="yr"></span> BasicSwap DEX</div>
     <div class="inline-flex items-center gap-1">
       Made with
       <svg class="w-3.5 h-3.5 text-rose-500" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="love"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
       by <a href="https://github.com/gerlofvanek" target="_blank" rel="noopener noreferrer" class="hover:text-brand hover:underline underline-offset-2">crz</a>
+    </div>
+    <div class="flex items-center justify-center gap-2 flex-wrap px-4">
+      <span class="text-slate-500">Donate</span>
+      <button id="xmr-donate" type="button"
+        data-address="85QDdyVftCW9zvwiVcR19eG4LhCejpRcM45yQHGLPKnxGs9p2iu5RxEB4C2KXRDFoZFL742gpiUKfGTA1ge1v8cMQRRUbW6"
+        data-tippy-content="Click to copy Monero address"
+        class="inline-flex items-center gap-1.5 max-w-full rounded-lg border border-slate-200 dark:border-ink-600 bg-white/60 dark:bg-ink-800/60 px-2.5 py-1 font-mono text-[10px] sm:text-[11px] text-slate-600 dark:text-slate-300"
+        aria-label="Copy Monero donation address">
+        <img src="images/logos/xmr.png" alt="" class="w-4 h-4 rounded-full flex-shrink-0" width="16" height="16" />
+        <span data-copy-label class="truncate max-w-[14rem] sm:max-w-[28rem]">85QDdyVftCW9zvwiVcR19eG4LhCejpRcM45yQHGLPKnxGs9p2iu5RxEB4C2KXRDFoZFL742gpiUKfGTA1ge1v8cMQRRUbW6</span>
+      </button>
     </div>
   </footer>
 </main>
