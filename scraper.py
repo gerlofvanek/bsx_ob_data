@@ -128,8 +128,16 @@ def hash160(data: bytes) -> bytes:
 def aes_decrypt(ciphertext: bytes, key: bytes, iv: bytes) -> bytes:
     cipher = AES.new(key, AES.MODE_CBC, iv)
     plaintext = cipher.decrypt(ciphertext)
-    # PKCS7 unpad
+    # PKCS7 unpad with validation: pad byte must be 1..16 and all pad bytes equal.
+    # The MAC is checked before decrypt, so a failure here means corrupt data;
+    # raising (instead of silently mis-slicing) routes it to parse_errors.
+    if not plaintext:
+        raise ValueError("Empty plaintext")
     pad_len = plaintext[-1]
+    if pad_len < 1 or pad_len > 16 or pad_len > len(plaintext):
+        raise ValueError("Bad PKCS7 padding length")
+    if plaintext[-pad_len:] != bytes([pad_len]) * pad_len:
+        raise ValueError("Bad PKCS7 padding bytes")
     return plaintext[:-pad_len]
 
 
@@ -506,6 +514,31 @@ def format_amount(amount: int, coin_id: int) -> str:
     return f"{amount / (10 ** decimals):.{decimals}f}"
 
 
+def write_text_atomic(path: str, text: str) -> None:
+    """Write via a temp file + os.replace so readers (CI, the site, other runs)
+    never observe a truncated file if we crash mid-write."""
+    tmp = f"{path}.tmp.{os.getpid()}"
+    with open(tmp, "w") as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
+def write_json_atomic(path: str, obj) -> None:
+    write_text_atomic(path, json.dumps(obj, indent=2))
+
+
+def lookup_by_offer_id(mapping: dict, mid_hex: str):
+    """Look up an offer-id-keyed dict trying both the canonical id and the
+    byte-swapped legacy form (pre-fix scrapers stored the timestamp prefix in
+    wire order). Returns (value, matched_key) or (None, None)."""
+    if not mapping or not mid_hex:
+        return None, None
+    for candidate in (mid_hex, legacy_to_canonical_id(mid_hex)):
+        if candidate in mapping:
+            return mapping[candidate], candidate
+    return None, None
+
+
 # ============================================================================
 # BSX Offer Listener
 # ============================================================================
@@ -523,10 +556,18 @@ class BSXOfferListener(P2PInterface):
         # not_for_us = SMSGs encrypted to other recipients (not BSX) - normal background traffic.
         # parse_errors = decrypted OK but offer payload failed to parse - actual failures.
         # message_type_counts = histogram of decoded payload type bytes.
+        # revokes_seen/matched/orphan diagnose why revokes do or don't drop offers:
+        # orphan = revoke whose offer we never saw this run (offer expired/aged out).
+        # buckets_requested/haves_received/wants_sent expose SMSG sync progress so a
+        # too-short --duration is visible in the health file instead of silent.
         self.stats = {"msgs_received": 0, "msgs_decrypted": 0,
                       "offers_parsed": 0, "decrypt_errors": 0,
                       "not_for_us": 0, "parse_errors": 0,
-                      "message_type_counts": {}}
+                      "message_type_counts": {},
+                      "revokes_seen": 0,
+                      "buckets_requested": 0, "haves_received": 0,
+                      "wants_sent": 0,
+                      "offers_merged_from_previous": 0}
         # Map of offer_msg_id -> count of bid messages observed for it.
         self.bid_counts = {}
         # Map of offer_msg_id -> list of decoded bid dicts (amount, amount_to, rate, time_valid,
@@ -541,6 +582,8 @@ class BSXOfferListener(P2PInterface):
         self.revoke_requests = {}
         # Track most-recent BSX message timestamp seen, surfaced in JSON for liveness.
         self.last_bsx_msg_ts = 0
+        # Wall-clock time we last received any SMSG payload; drives --idle-exit.
+        self.last_recv_monotime = time.monotonic()
 
     def on_version(self, msg):
         self.send_message(msg_verack())
@@ -578,13 +621,16 @@ class BSXOfferListener(P2PInterface):
                 new_buckets.append(bt)
         if new_buckets:
             log.info(f"Requesting {len(new_buckets)} buckets")
+            self.stats["buckets_requested"] += len(new_buckets)
             self.send_message(msg_smsgShow_impl(bucket_times=new_buckets))
 
     def on_smsgHave(self, msg):
         bt = msg.bucket_time
+        self.stats["haves_received"] += 1
         hashes = [h for h in msg.msg_hashes if h.hex() not in self.seen_msg_ids]
         if hashes:
             log.info(f"Requesting {len(hashes)} messages from bucket")
+            self.stats["wants_sent"] += len(hashes)
             self.send_message(msg_smsgWant_impl(bucket_time=bt, msg_hashes=hashes))
 
     def on_smsgShow(self, msg):
@@ -604,6 +650,7 @@ class BSXOfferListener(P2PInterface):
 
 
     def _process_smsg_data(self, data: bytes):
+        self.last_recv_monotime = time.monotonic()
         ofs = 0
         while ofs < len(data):
             if ofs + SMSG_HDR_LEN > len(data):
@@ -666,6 +713,7 @@ class BSXOfferListener(P2PInterface):
                 # The signature is kept and verified at publish time against the offer's
                 # addr_from, so third parties can't censor offers off the orderbook.
                 if msg_type == MessageTypes.OFFER_REVOKE:
+                    self.stats["revokes_seen"] += 1
                     try:
                         rev_data = bytes.fromhex(payload_hex[2:])
                         rm = OfferRevokeMessage(); rm.from_bytes(rev_data)
@@ -738,36 +786,47 @@ class BSXOfferListener(P2PInterface):
                  f"{self.stats['msgs_decrypted']} decrypted, "
                  f"{self.stats['msgs_received']} total")
 
-    def get_orderbook_dict(self, anonymize_makers: bool = False) -> dict:
+    def get_orderbook_dict(self, anonymize_makers: bool = False,
+                           drop_expired: bool = False) -> dict:
         now = int(time.time())
         # Tolerate listeners constructed without going through __init__ (test fixtures).
         revoked = getattr(self, "revoked_offer_ids", set()) or set()
         revoke_requests = getattr(self, "revoke_requests", {}) or {}
         bids_per_offer = getattr(self, "bids_per_offer", {}) or {}
+        bid_counts = getattr(self, "bid_counts", {}) or {}
         offers = []
         revoked_dropped = 0
         revokes_invalid_sig = 0
+        matched_revoke_ids = set()
         for o in self.offers.values():
             mid = o.get("msg_id", "")
             if mid in revoked:
                 revoked_dropped += 1
                 continue
-            if mid in revoke_requests:
+            # Look the revoke up under both the canonical id and the byte-swapped
+            # legacy form, so offers carried over from pre-fix snapshots still match.
+            sig, matched_key = lookup_by_offer_id(revoke_requests, mid)
+            if sig is not None:
+                matched_revoke_ids.add(matched_key)
                 # Honour the revoke only if its signature over "<offer_msg_id>_revoke"
                 # verifies against the offer's maker address (as basicswap does).
-                if verify_signed_message(
-                    o.get("addr_from", ""), mid + "_revoke", revoke_requests[mid]
-                ):
+                # BasicSwap signs the canonical id, so try that form first.
+                if any(verify_signed_message(o.get("addr_from", ""), c + "_revoke", sig)
+                       for c in dict.fromkeys([mid, legacy_to_canonical_id(mid)])):
                     revoked_dropped += 1
                     continue
                 revokes_invalid_sig += 1
+            if drop_expired and (o.get("timestamp", 0) + o.get("time_valid", 0)) <= now:
+                continue
             o2 = dict(o)
             # Attach observed bid count for this offer (defaults to 0 when no BIDs seen).
-            o2["bid_count"] = self.bid_counts.get(mid, 0)
+            bc, _ = lookup_by_offer_id(bid_counts, mid)
+            o2["bid_count"] = bc or 0
             # Compute the highest *active* open bid (max amount_to, the side the maker receives).
             # Active = sent + time_valid > now. Falls back to None if no live bids.
             best, active_n = None, 0
-            for bd in bids_per_offer.get(mid, []):
+            offer_bids, _ = lookup_by_offer_id(bids_per_offer, mid)
+            for bd in offer_bids or []:
                 exp = bd["sent"] + bd["time_valid"]
                 if exp <= now:
                     continue
@@ -801,6 +860,12 @@ class BSXOfferListener(P2PInterface):
         # Record how many offers were suppressed so /health and the UI can show coverage.
         self.stats["revoked_offers_dropped"] = revoked_dropped
         self.stats["revokes_invalid_sig"] = revokes_invalid_sig
+        # Revoke audit: matched = revokes that found their offer in this book;
+        # orphan = revokes whose offer we never had (already expired / aged out of
+        # the SMSG buckets before this run) - the usual reason "revokes seen" is
+        # high while "offers dropped" stays 0.
+        self.stats["revokes_matched_offer"] = len(matched_revoke_ids)
+        self.stats["revokes_orphan"] = max(0, len(revoke_requests) - len(matched_revoke_ids))
         return {
             "timestamp": now,
             "updated_at": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(now)),
@@ -891,6 +956,41 @@ def clean_history_snapshots(history_dir: str, revoke_requests: dict, live_offers
     return removed_total
 
 
+def merge_previous_offers(listener, path: str) -> int:
+    """Carry still-active offers from a previous snapshot into this run so the
+    published orderbook is the union of what we saw now and what we saw before
+    (a single short scrape window can miss offers a peer didn't re-announce).
+    Freshly scraped offers win on msg_id collision; expired offers and derived
+    fields (bid_count / highest_bid, recomputed at publish) are not carried."""
+    try:
+        with open(path) as f:
+            prev = json.load(f)
+    except FileNotFoundError:
+        return 0
+    except Exception as e:
+        log.warning(f"merge-from read failed ({path}): {e}")
+        return 0
+    now = int(time.time())
+    merged = 0
+    for o in prev.get("offers", []):
+        mid = o.get("msg_id", "")
+        if not mid or mid in listener.offers:
+            continue
+        if legacy_to_canonical_id(mid) in listener.offers:
+            continue
+        if (o.get("timestamp", 0) + o.get("time_valid", 0)) <= now:
+            continue
+        o = dict(o)
+        o.pop("bid_count", None)
+        o.pop("highest_bid", None)
+        listener.offers[mid] = o
+        merged += 1
+    if merged:
+        log.info(f"Merged {merged} still-active offer(s) from previous snapshot")
+    listener.stats["offers_merged_from_previous"] = merged
+    return merged
+
+
 # ============================================================================
 # Main
 # ============================================================================
@@ -914,6 +1014,23 @@ def main():
                         help="If set, persist observed offer revocations here (JSON) so a "
                              "revoke seen in one run still suppresses the offer in later "
                              "runs that miss the revoke message")
+    parser.add_argument("--merge-from",
+                        help="Path to a previous orderbook JSON; still-active offers from it "
+                             "are carried into this run (fresh data wins on collision) so a "
+                             "short scrape window doesn't drop offers the peer didn't resend")
+    parser.add_argument("--idle-exit", type=int, default=0,
+                        help="End the listen window early after this many seconds without "
+                             "any incoming SMSG payload (0 = disabled, always wait full "
+                             "--duration)")
+    parser.add_argument("--max-peers", type=int, default=1,
+                        help="Scrape up to N peers sequentially, merging results "
+                             "(default: 1). Each peer gets its own --duration window")
+    parser.add_argument("--drop-expired", action="store_true",
+                        help="Exclude expired offers from the published JSON instead of "
+                             "leaving them for the UI to filter")
+    parser.add_argument("--strict", action="store_true",
+                        help="Exit non-zero if the run received no SMSG messages at all "
+                             "(for CI to catch dead peers / silent failures)")
     args = parser.parse_args()
 
     if args.debug:
@@ -958,17 +1075,30 @@ def main():
     net = NetworkThread()
     net.start()
     listener = None
-    connected = False
+    prev_listener = None
+    peers_scraped = 0
+    started_ts = int(time.time())
 
     try:
         for idx, (cand_ip, cand_port) in enumerate(candidates):
             log.info(f"[{idx + 1}/{len(candidates)}] Trying peer {cand_ip}:{cand_port}")
             listener = BSXOfferListener(privkey)
-            for oid, ent in revoke_state.items():
-                try:
-                    listener.revoke_requests[oid] = bytes.fromhex(ent.get("sig", ""))
-                except Exception:
-                    pass
+            if prev_listener is not None:
+                # Carry accumulated state across peers so results merge and we
+                # don't re-request messages the previous peer already delivered.
+                listener.offers = prev_listener.offers
+                listener.seen_msg_ids = prev_listener.seen_msg_ids
+                listener.bid_counts = prev_listener.bid_counts
+                listener.bids_per_offer = prev_listener.bids_per_offer
+                listener.revoke_requests = prev_listener.revoke_requests
+                listener.stats = prev_listener.stats
+                listener.last_bsx_msg_ts = prev_listener.last_bsx_msg_ts
+            else:
+                for oid, ent in revoke_state.items():
+                    try:
+                        listener.revoke_requests[oid] = bytes.fromhex(ent.get("sig", ""))
+                    except Exception:
+                        pass
             listener.p2p_connected_to_node = True
             try:
                 listener.peer_connect(
@@ -985,16 +1115,31 @@ def main():
                     listener.peer_disconnect()
                 except Exception:
                     pass
+                listener = prev_listener
                 continue
 
             listener.send_message(msg_smsgPing())
-            log.info(f"Connected to {cand_ip}:{cand_port}. Listening for {args.duration}s...")
-            connected = True
-            for _ in range(args.duration):
+            log.info(f"Connected to {cand_ip}:{cand_port}. Listening for {args.duration}s"
+                     f"{f' (idle-exit {args.idle_exit}s)' if args.idle_exit else ''}...")
+            listener.last_recv_monotime = time.monotonic()
+            deadline = time.monotonic() + args.duration
+            while time.monotonic() < deadline:
                 time.sleep(1)
-            break
+                if (args.idle_exit
+                        and listener.stats["msgs_received"] > 0
+                        and time.monotonic() - listener.last_recv_monotime >= args.idle_exit):
+                    log.info(f"No new messages for {args.idle_exit}s; ending listen early")
+                    break
+            peers_scraped += 1
+            if peers_scraped >= max(1, args.max_peers):
+                break
+            try:
+                listener.peer_disconnect()
+            except Exception:
+                pass
+            prev_listener = listener
 
-        if not connected:
+        if peers_scraped == 0:
             log.error(f"All {len(candidates)} peer(s) failed to connect")
             return 1
 
@@ -1004,14 +1149,26 @@ def main():
         net.close()
         time.sleep(0.5)
 
+    if listener is None or peers_scraped == 0:
+        # Interrupted before any peer connected - nothing meaningful to publish.
+        log.error("No data collected; skipping output")
+        return 1
+
+    # Carry still-active offers from the previous published snapshot, if requested.
+    if args.merge_from:
+        merge_previous_offers(listener, args.merge_from)
+
     # Output
-    started_ts = int(time.time()) - args.duration
-    book_dict = listener.get_orderbook_dict(anonymize_makers=args.anonymize_makers)
+    book_dict = listener.get_orderbook_dict(
+        anonymize_makers=args.anonymize_makers, drop_expired=args.drop_expired)
     orderbook = json.dumps(book_dict, indent=2)
     if args.output:
-        with open(args.output, "w") as f:
-            f.write(orderbook)
-        log.info(f"Saved {len(listener.offers)} offers to {args.output}")
+        try:
+            write_text_atomic(args.output, orderbook)
+            log.info(f"Saved {len(book_dict['offers'])} offers to {args.output}")
+        except Exception as e:
+            log.error(f"output write failed: {e}")
+            return 1
     else:
         print(orderbook)
 
@@ -1028,8 +1185,7 @@ def main():
             cutoff = now_ts - 7 * 86400
             merged = {k: v for k, v in merged.items()
                       if int(v.get("first_seen", now_ts)) >= cutoff}
-            with open(args.state_file, "w") as f:
-                json.dump({"revoke_requests": merged}, f, indent=2)
+            write_json_atomic(args.state_file, {"revoke_requests": merged})
             log.info(f"Saved {len(merged)} revoke request(s) to {args.state_file}")
         except Exception as e:
             log.warning(f"state-file write failed: {e}")
@@ -1040,8 +1196,7 @@ def main():
             os.makedirs(args.history_dir, exist_ok=True)
             snap_name = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + ".json"
             snap_path = os.path.join(args.history_dir, snap_name)
-            with open(snap_path, "w") as f:
-                f.write(orderbook)
+            write_text_atomic(snap_path, orderbook)
             manifest_path = os.path.join(args.history_dir, "manifest.json")
             try:
                 with open(manifest_path) as f:
@@ -1064,8 +1219,7 @@ def main():
                 "pair_counts": pair_counts,
             })
             manifest["snapshots"] = manifest["snapshots"][-200:]
-            with open(manifest_path, "w") as f:
-                json.dump(manifest, f, indent=2)
+            write_json_atomic(manifest_path, manifest)
             log.info(f"Wrote snapshot {snap_name} + updated manifest")
             # Retroactively scrub offers from older snapshots whose revoke we have
             # since observed (covers snapshots written before a revoke arrived and
@@ -1085,18 +1239,30 @@ def main():
                 "last_run_iso": book_dict["updated_at"],
                 "last_bsx_msg_ts": listener.last_bsx_msg_ts,
                 "duration_s": duration,
+                "peers_scraped": peers_scraped,
                 "msgs_received": listener.stats.get("msgs_received", 0),
                 "msgs_decrypted": listener.stats.get("msgs_decrypted", 0),
                 "offers_parsed": listener.stats.get("offers_parsed", 0),
+                "offers_merged_from_previous":
+                    listener.stats.get("offers_merged_from_previous", 0),
+                "revokes_seen": listener.stats.get("revokes_seen", 0),
+                "revokes_matched_offer": listener.stats.get("revokes_matched_offer", 0),
+                "revokes_orphan": listener.stats.get("revokes_orphan", 0),
+                "revoked_offers_dropped": listener.stats.get("revoked_offers_dropped", 0),
+                "buckets_requested": listener.stats.get("buckets_requested", 0),
+                "wants_sent": listener.stats.get("wants_sent", 0),
                 "msg_rate_per_s": round(listener.stats.get("msgs_received", 0) / duration, 3),
-                "ok": True,
+                "ok": listener.stats.get("msgs_received", 0) > 0,
             }
-            with open(args.health_file, "w") as f:
-                json.dump(health, f, indent=2)
+            write_json_atomic(args.health_file, health)
         except Exception as e:
             log.warning(f"health-file write failed: {e}")
 
     log.info(f"Done. {listener.stats}")
+
+    if args.strict and listener.stats.get("msgs_received", 0) == 0:
+        log.error("Strict mode: connected but received no SMSG messages")
+        return 1
     return 0
 
 

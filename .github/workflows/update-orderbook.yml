@@ -9,7 +9,7 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 4
     steps:
       - uses: actions/checkout@v4
 
@@ -21,13 +21,26 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # --merge-from carries still-active offers from the last published snapshot
+      # so a short scrape window doesn't drop offers the peer didn't re-announce.
+      # --state-file persists signed revokes across runs (pruned after 7 days).
+      # --idle-exit ends the listen window early once the peer goes quiet.
+      # --strict fails the job if no SMSG traffic arrived (dead peer / silent break).
       - name: Fetch orderbook from Particl network
-        run: python scraper.py --auto --duration 15 -o orderbook.json
+        run: |
+          python scraper.py --auto \
+            --duration 30 \
+            --idle-exit 8 \
+            --merge-from orderbook.json \
+            --state-file revoke_state.json \
+            --health-file health.json \
+            --strict \
+            -o orderbook.json
 
       - name: Commit and push if changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add orderbook.json
+          git add orderbook.json health.json revoke_state.json
           git diff --cached --quiet || git commit -m "Update orderbook $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           git push

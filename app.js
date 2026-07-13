@@ -628,6 +628,19 @@ function tag(label, cls){
   const tip = SWAP_TYPE_DESC[label] || SWAP_TAG_TIPS[label] || '';
   return `<span class="px-1.5 py-0.5 rounded text-[10px] ${cls}" data-tippy-content="${tip}">${label}</span>`;
 }
+
+// Bid-interest chip: shown when the scraper observed BID messages for this offer.
+// highest_bid (when present) carries the largest still-active bid's amounts.
+function bidChip(o){
+  const n = o.bid_count || 0;
+  if(!n) return '';
+  let tip = `${n} bid message${n>1?'s':''} observed for this offer on the SMSG network.`;
+  const hb = o.highest_bid;
+  if(hb && hb.amount_str){
+    tip += ` Highest active bid: ${hb.amount_str} ${o.coin_from} → ${hb.amount_to_str} ${o.coin_to}.`;
+  }
+  return `<span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/15 text-amber-600 dark:text-amber-400" data-tippy-content="${tip}">${n} bid${n>1?'s':''}</span>`;
+}
 function renderOffers(){
   const showAll = offersScope === 'all';
   if(!showAll && !CUR) return;
@@ -730,7 +743,7 @@ function renderOffers(){
       <td class="py-2 text-right text-slate-400">${expS>0?f.ageShort(expS):'expired'}</td>
     </tr>
     <tr class="border-b border-slate-100 dark:border-ink-700/60"><td colspan="${cols}" class="pb-2 pl-0">
-      <span class="inline-flex gap-1 flex-wrap">${tag(typeLabel,'bg-brand/15 text-brand')}${flags.map(fl=>tag(fl,'bg-slate-200 dark:bg-ink-700 text-slate-500 dark:text-slate-300')).join('')}</span>
+      <span class="inline-flex gap-1 flex-wrap">${tag(typeLabel,'bg-brand/15 text-brand')}${flags.map(fl=>tag(fl,'bg-slate-200 dark:bg-ink-700 text-slate-500 dark:text-slate-300')).join('')}${bidChip(o)}</span>
     </td></tr>`;
   }).join('') || `<tr><td colspan="${cols}" class="py-8 text-center text-slate-400 text-sm">${emptyMsg}</td></tr>`;
 }
@@ -886,7 +899,8 @@ function renderAdvanced(){
     {k:'Listed offers',    v: f.int(d.num_offers||0),    tip:'All offers in the snapshot, including expired.'},
     {k:'Active offers',    v: f.int(d.active_offers||0), tip:'Unexpired offers — the basis for every figure in this page.'},
     {k:'Offers revoked',   v: f.int(s.revoked_offers_dropped||0), tip:'Offers withdrawn by their maker via a signed revoke message and filtered from this snapshot.'},
-    {k:'Invalid revokes',  v: f.int(s.revokes_invalid_sig||0), tip:'Revoke messages whose signature did not match the offer\u2019s maker address — ignored to prevent third-party censorship.'},
+    {k:'Invalid revokes',  v: f.int(s.revokes_invalid_sig||0), cls: (s.revokes_invalid_sig||0)>0 ? 'text-rose-500' : '', tip:'Revoke messages whose signature did not match the offer\u2019s maker address — ignored to prevent third-party censorship.'},
+    {k:'Orphan revokes',   v: f.int(s.revokes_orphan||0), tip:'Revoke messages whose offer was never seen this run — usually the offer already expired out of the SMSG buckets. Harmless.'},
     {k:'Median spread',    v: medianSpread!=null ? medianSpread.toFixed(2)+'%' : '—', tip:'Liquidity-weighted median spread across active two-sided pairs.'},
     {k:'Scraper run',      v: h.duration_s!=null ? h.duration_s+'s' : '—', tip:'Wall time of the most recent scraper run (lower is better).'},
   ];
@@ -894,7 +908,7 @@ function renderAdvanced(){
     <div class="rounded-xl bg-slate-50 dark:bg-ink-700/50 p-3">
       <div class="text-slate-400 flex items-center gap-1">${a.k}
         <span class="info" data-tippy-content="${a.tip}"><svg><use href="#i-info"/></svg></span></div>
-      <div class="font-semibold text-base tabular mt-0.5">${a.v}</div>
+      <div class="font-semibold text-base tabular mt-0.5 ${a.cls||''}">${a.v}</div>
     </div>`).join('');
 }
 
