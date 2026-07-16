@@ -598,7 +598,10 @@ function renderBook(){
     const pct = (o.cum/maxCum*100).toFixed(1);
     const priceCol = side==='bid' ? 'text-emerald-500' : 'text-rose-500';
     const priceStr = (unit==='usd' && qUsd) ? f.fiat(o.price*qUsd) : f.coin(o.price);
-    const priceTip = `${f.coinFull(o.price)} ${quote}${qUsd?' · '+f.fiat(o.price*qUsd):''}`;
+    const takerHint = side==='ask'
+      ? `Maker sells ${base} — take it by sending ${quote}, you receive ${base}.`
+      : `Maker buys ${base} — take it by sending ${base}, you receive ${quote}.`;
+    const priceTip = `${f.coinFull(o.price)} ${quote}${qUsd?' · '+f.fiat(o.price*qUsd):''} — ${takerHint}`;
     return `<div class="relative grid grid-cols-3 gap-2 px-1 py-0.5 rounded">
       <span class="depthbar ${side==='bid'?'bid-bar':'ask-bar'}" style="width:${pct}%"></span>
       <span class="relative z-10 ${priceCol}" data-tippy-content="${priceTip}">${priceStr}</span>
@@ -706,10 +709,14 @@ function renderOffers(){
     }
     let mkt = null;
     if(refRate && rateQuotePerBase){
-      mkt = ((rateQuotePerBase - refRate)/refRate)*100*side;
+      // Taker perspective: green = better-than-mid rate for you taking this offer.
+      mkt = ((rateQuotePerBase - refRate)/refRate)*100*side*-1;
     }
     const mktCls = mkt===null ? 'text-slate-400' : (Math.abs(mkt)<1 ? 'text-slate-400' : (mkt>=0?'text-emerald-500':'text-rose-500'));
     const mktStr = mkt===null ? '—' : ((mkt>=0?'▲':'▼')+' '+Math.abs(mkt).toFixed(2)+'%');
+    const mktTip = mkt===null ? '' : (mkt>=0
+      ? `Taking this offer gives you a rate ${Math.abs(mkt).toFixed(2)}% better than the pair mid-price.`
+      : `Taking this offer costs you ${Math.abs(mkt).toFixed(2)}% more than the pair mid-price.`);
     const typeLabel = SWAP_TYPES[o.swap_type] || 'unknown';
     const flags = [];
     if(o.amount_negotiable) flags.push('amt neg');
@@ -731,14 +738,14 @@ function renderOffers(){
       : '';
     return `<tr class="border-b border-slate-100 dark:border-ink-700/60 hover:bg-slate-50 dark:hover:bg-ink-700/40">
       ${pairCell}
-      <td class="py-2"><span class="inline-flex items-center gap-1.5">${coinDot(o.coin_from,'w-4 h-4 text-[8px]')}
-        <span data-tippy-content="${f.coinFull(fa)} ${o.coin_from}">${f.coin(fa)} ${o.coin_from}</span></span></td>
-      <td class="py-2 text-slate-400">→</td>
       <td class="py-2"><span class="inline-flex items-center gap-1.5">${coinDot(o.coin_to,'w-4 h-4 text-[8px]')}
-        <span data-tippy-content="${f.coinFull(ta)} ${o.coin_to}">${f.coin(ta)} ${o.coin_to}</span></span></td>
+        <span data-tippy-content="${f.coinFull(ta)} ${o.coin_to} — what you pay the maker">${f.coin(ta)} ${o.coin_to}</span></span></td>
+      <td class="py-2 text-slate-400">→</td>
+      <td class="py-2"><span class="inline-flex items-center gap-1.5">${coinDot(o.coin_from,'w-4 h-4 text-[8px]')}
+        <span data-tippy-content="${f.coinFull(fa)} ${o.coin_from} — what the maker sends you">${f.coin(fa)} ${o.coin_from}</span></span></td>
       <td class="py-2 text-right">${usd?f.fiat(usd):'—'}</td>
       <td class="py-2 text-right text-slate-400" data-tippy-content="${rateQuotePerBase!=null?f.coinFull(rateQuotePerBase)+' '+rateLabel:''}">${rateQuotePerBase!=null?f.coin(rateQuotePerBase):'—'}</td>
-      <td class="py-2 text-right ${mktCls}">${mktStr}</td>
+      <td class="py-2 text-right ${mktCls}" data-tippy-content="${mktTip}">${mktStr}</td>
       <td class="py-2">${makerCell}</td>
       <td class="py-2 text-right text-slate-400">${expS>0?f.ageShort(expS):'expired'}</td>
     </tr>

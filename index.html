@@ -227,7 +227,10 @@
       </div>
 
       <div>
-        <h3 class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-2">Order book</h3>
+        <h3 class="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1">
+          Order book
+          <span class="info" data-tippy-content="Standard exchange view for this pair: red asks are makers selling the base coin, green bids are makers buying it. To take a red ask you send the quote coin and receive the base coin (and vice versa). Hover a row for the exact direction."><svg><use href="#i-info"/></svg></span>
+        </h3>
         <div class="text-[11px] text-slate-400 grid grid-cols-3 gap-2 px-1 mb-1">
           <span>Price</span><span class="text-right" id="ob-size-label">Size</span><span class="text-right">Total</span>
         </div>
