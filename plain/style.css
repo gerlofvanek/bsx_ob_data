@@ -71,13 +71,13 @@ html.skynet {
 }
 
 html {
-  font-size: 14px;
+  font-size: 11.2px; /* ~20% smaller than 14px — fits mobile tables better */
   -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
-  padding: 2.5rem 1rem 4rem;
+  padding: 2rem 0.75rem 3rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 0.92rem;
   line-height: 1.55;
@@ -514,7 +514,12 @@ footer p {
 }
 
 @media (max-width: 480px) {
-  body { padding: 1.5rem 0.75rem 3rem; font-size: 0.85rem; }
+  body { padding: 1.25rem 0.5rem 2.5rem; font-size: 0.85rem; }
   .page { max-width: 100%; }
   pre.data { font-size: 0.82rem; }
+  .logo { font-size: 0.72rem; }
+  table.data-table th:not(:last-child),
+  table.data-table td:not(:last-child) {
+    padding-right: 0.45rem;
+  }
 }
