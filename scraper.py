@@ -1031,6 +1031,9 @@ def main():
     parser.add_argument("--strict", action="store_true",
                         help="Exit non-zero if the run received no SMSG messages at all "
                              "(for CI to catch dead peers / silent failures)")
+    parser.add_argument("--plain-dir",
+                        help="If set, generate plain/stats.txt, summary.json, feed.xml, etc. "
+                             "under this directory after a successful scrape")
     args = parser.parse_args()
 
     if args.debug:
@@ -1231,6 +1234,7 @@ def main():
         except Exception as e:
             log.warning(f"history-dir write failed: {e}")
 
+    health = None
     if args.health_file:
         try:
             duration = max(1, int(time.time()) - started_ts)
@@ -1257,6 +1261,22 @@ def main():
             write_json_atomic(args.health_file, health)
         except Exception as e:
             log.warning(f"health-file write failed: {e}")
+
+    if args.plain_dir:
+        try:
+            from scripts.plain_stats import generate_plain_artifacts
+            manifest_path = None
+            if args.history_dir:
+                manifest_path = os.path.join(args.history_dir, "manifest.json")
+            generate_plain_artifacts(
+                book_dict,
+                args.plain_dir,
+                health=health,
+                manifest_path=manifest_path,
+            )
+            log.info(f"Wrote plain stats artifacts to {args.plain_dir}")
+        except Exception as e:
+            log.warning(f"plain-dir write failed: {e}")
 
     log.info(f"Done. {listener.stats}")
 

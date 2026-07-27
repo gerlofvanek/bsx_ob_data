@@ -499,6 +499,7 @@ function renderTickers(){
         <div>
           <div class="text-lg font-bold tabular">${bUsd ? f.fiat(bUsd) : '—'}</div>
           <div class="text-xs"><span class="${sp.cls}">${spreadPct==null?'spread n/a':sp.word+' '+spreadPct.toFixed(2)+'%'}</span></div>
+          <a href="plain/?pair=${encodeURIComponent(t.base+'-'+t.quote)}" class="text-[10px] text-brand hover:underline mt-1 inline-block" onclick="event.stopPropagation()">plain →</a>
         </div>
         <div class="w-24 h-10"><canvas id="spark${i}"></canvas></div>
       </div>

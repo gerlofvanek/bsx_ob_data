@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<script>
+(function () {
+  var path = location.pathname.replace(/\/$/, '');
+  var m = path.match(/\/plain\/([A-Za-z0-9]+[-/][A-Za-z0-9_]+)$/i);
+  if (m) {
+    var pair = m[1].toUpperCase().replace('/', '-');
+    location.replace('/plain/?pair=' + encodeURIComponent(pair));
+    return;
+  }
+  m = path.match(/\/plain\/pairs\/([A-Za-z0-9]+[-/][A-Za-z0-9_]+)\.txt$/i);
+  if (m) {
+    var pair2 = m[1].toUpperCase().replace('/', '-');
+    location.replace('/plain/?pair=' + encodeURIComponent(pair2));
+    return;
+  }
+  location.replace('/plain/');
+})();
+</script>
+<title>Redirecting…</title>
+</head>
+<body>
+<p><a href="/plain/">BasicSwap plain stats</a></p>
+</body>
+</html>

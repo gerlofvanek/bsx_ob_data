@@ -8,6 +8,11 @@
 <title>BasicSwap · Markets</title>
 <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png" />
 <link rel="manifest" href="manifest.webmanifest" />
+<link rel="alternate" type="text/plain" href="stats.txt" title="Plain text market stats (root)" />
+<link rel="alternate" type="text/plain" href="plain/stats.txt" title="Plain text market stats" />
+<link rel="alternate" type="application/rss+xml" href="plain/feed.xml" title="BasicSwap market stats RSS" />
+<link rel="alternate" type="application/feed+json" href="plain/feed.json" title="BasicSwap market stats JSON Feed" />
+<link rel="alternate" type="text/plain" href="status.txt" title="BasicSwap scrape status" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -287,6 +292,7 @@
   </section>
 
   <footer class="text-center text-xs text-slate-400 py-6 space-y-2">
+    <div><a href="plain/" class="hover:text-brand hover:underline underline-offset-2">plain text stats</a> · <a href="plain/stats.txt" class="hover:text-brand hover:underline underline-offset-2">stats.txt</a> · <a href="status.txt" class="hover:text-brand hover:underline underline-offset-2">status</a></div>
     <div>© <span id="yr"></span> BasicSwap DEX</div>
     <div class="inline-flex items-center gap-1">
       Made with

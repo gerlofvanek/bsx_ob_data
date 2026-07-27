@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="Plain text BasicSwap DEX market stats — liquidity, pairs, makers and order book from the Particl SMSG network." />
+<meta property="og:title" content="BasicSwap · plain text market stats" />
+<meta property="og:description" content="Live liquidity, pairs, makers and order book from the Particl SMSG network." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="/plain/" />
+<meta property="og:image" content="../images/favicon-32.png" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="BasicSwap · plain text market stats" />
+<meta name="twitter:description" content="Live liquidity, pairs, makers and order book from the Particl SMSG network." />
+<meta name="twitter:image" content="../images/favicon-32.png" />
+<meta name="theme-color" content="#1a1a1a" />
+<title>BasicSwap · plain text market stats</title>
+<link rel="icon" type="image/png" sizes="32x32" href="../images/favicon-32.png" />
+<script src="theme.js"></script>
+<link rel="stylesheet" href="style.css" />
+<script>
+(function () {
+  if (location.search) return;
+  var path = location.pathname.replace(/\/$/, '');
+  var m = path.match(/\/plain\/([A-Za-z0-9]+[-/][A-Za-z0-9_]+)$/i);
+  if (!m) return;
+  var pair = m[1].toUpperCase().replace('/', '-');
+  location.replace(location.pathname.replace(/\/[^/]+$/, '/') + '?pair=' + encodeURIComponent(pair));
+})();
+</script>
+<link rel="alternate" type="text/plain" href="stats.txt" title="Plain text market stats" />
+<link rel="alternate" type="application/rss+xml" href="feed.xml" title="BasicSwap market stats RSS" />
+<link rel="alternate" type="application/feed+json" href="feed.json" title="BasicSwap market stats JSON Feed" />
+</head>
+<body>
+<noscript>
+  <div class="page">
+    <p class="tagline">plain text market stats</p>
+    <p>JavaScript is off — use the pre-rendered snapshot instead:</p>
+    <p><a href="stats.txt">stats.txt</a> · <a href="summary.json">summary.json</a></p>
+    <p><a href="../">full markets view</a></p>
+  </div>
+</noscript>
+<main id="out" class="page" aria-live="polite">
+  <p class="muted">loading snapshot…</p>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
