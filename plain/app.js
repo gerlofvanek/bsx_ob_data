@@ -29,6 +29,7 @@ const COIN_GECKO_IDS = {
 const REFRESH_MS = 5 * 60 * 1000;
 const TOP_N = 10;
 const BOOK_DEFAULT = 6;
+const LISTINGS_DEFAULT = 40;
 const BAR_W = 12;
 const SPARK_W = 8;
 const RULE_MIN = 45;
@@ -60,10 +61,15 @@ let snapshotManifest = [];
 let bulletinManifest = [];
 let latestPrices = {};
 let bookExpanded = false;
+let listingsExpanded = false;
 let lastPairKey = null;
 
 const KNOWN_MAKERS = {
-  PgTfpGmwtXppGVrNUAdJicKAVErZBEK2xo: { name: 'WizardSwap', url: 'https://www.wizardswap.io/faq&page=basicswap' },
+  PgTfpGmwtXppGVrNUAdJicKAVErZBEK2xo: {
+    name: 'WizardSwap',
+    logo: '../images/logos/wizardswap.png',
+    url: 'https://www.wizardswap.io/faq&page=basicswap',
+  },
 };
 const WATCH_STORAGE_KEY = 'bsx-plain-watch';
 const STALE_WARN_S = 30 * 60;
@@ -333,14 +339,86 @@ function watchlistKeys(watchlist) {
   return new Set(watchlist.map(w => pairKey(w.base, w.quote)));
 }
 
-function knownMakerLabel(addr) {
-  if (!addr) return '—';
+function knownMaker(addr) {
+  if (!addr) return null;
   const a = String(addr).trim();
   for (const [full, meta] of Object.entries(KNOWN_MAKERS)) {
-    if (a === full) return meta.name;
-    if (a.length >= 9 && a.startsWith(full.slice(0, 4)) && a.endsWith(full.slice(-4))) return meta.name;
+    if (a === full) return meta;
+    if (a.length >= 9 && a.startsWith(full.slice(0, 4)) && a.endsWith(full.slice(-4))) return meta;
   }
-  return truncateAddr(a);
+  return null;
+}
+
+function knownMakerLabel(addr) {
+  return knownMaker(addr)?.name || truncateAddr(addr);
+}
+
+function makerCellHtml(addr) {
+  const meta = knownMaker(addr);
+  const label = meta ? meta.name : truncateAddr(addr);
+  let html = '';
+  if (meta?.logo) {
+    html += '<img class="maker-logo" src="' + esc(meta.logo) + '" alt="" width="12" height="12"> ';
+  }
+  if (meta?.url) {
+    html += '<a href="' + esc(meta.url) + '" rel="noopener noreferrer">' + esc(label) + '</a>';
+  } else {
+    html += esc(label);
+  }
+  return html;
+}
+
+function offerExpiresIn(o) {
+  const now = Math.floor(Date.now() / 1000);
+  const left = (o.timestamp || 0) + (o.time_valid || 0) - now;
+  return left > 0 ? f.ageShort(left) : 'expired';
+}
+
+function renderAllListingsSection(limit) {
+  const offers = liveOffers().slice().sort((a, b) => offerUsdSize(b) - offerUsdSize(a));
+  if (!offers.length) return { text: '(none)', html: '', total: 0 };
+
+  const shown = offers.slice(0, limit);
+
+  const textRows = shown.map(o => {
+    const usd = offerUsdSize(o);
+    return [
+      o.coin_from + '/' + o.coin_to,
+      f.coin(parseFloat(o.amount_to_str) || 0) + ' ' + o.coin_to,
+      f.coin(parseFloat(o.amount_from_str) || 0) + ' ' + o.coin_from,
+      f.fiatCompact(usd),
+      knownMakerLabel(o.addr_from),
+      offerExpiresIn(o),
+    ];
+  });
+  let text = asciiTable(
+    ['Pair', 'Pay', 'Get', 'USD', 'Maker', 'Left'],
+    textRows,
+    ['l', 'r', 'r', 'r', 'l', 'r']
+  );
+  text += '\n\n' + shown.length + ' of ' + offers.length + ' live offers';
+  if (offers.length > limit) text += ' · show more on page';
+
+  const htmlRows = shown.map(o => {
+    const wizard = !!knownMaker(o.addr_from);
+    const pay = f.coin(parseFloat(o.amount_to_str) || 0) + ' ' + o.coin_to;
+    const get = f.coin(parseFloat(o.amount_from_str) || 0) + ' ' + o.coin_from;
+    return '<tr' + (wizard ? ' class="wizard-row"' : '') + '>'
+      + '<td><a href="' + esc(pairUrl(o.coin_from, o.coin_to)) + '">' + esc(o.coin_from + '/' + o.coin_to) + '</a></td>'
+      + '<td class="num">' + esc(pay) + '</td>'
+      + '<td class="num">' + esc(get) + '</td>'
+      + '<td class="num">' + esc(f.fiatCompact(offerUsdSize(o))) + '</td>'
+      + '<td class="maker-cell">' + makerCellHtml(o.addr_from) + '</td>'
+      + '<td class="num">' + esc(offerExpiresIn(o)) + '</td>'
+      + '</tr>';
+  }).join('');
+
+  const html = '<table class="data-table listings-table"><thead><tr>'
+    + '<th>Pair</th><th>Pay</th><th>Get</th><th>USD</th><th>Maker</th><th>Left</th>'
+    + '</tr></thead><tbody>' + htmlRows + '</tbody></table>'
+    + '<p class="table-foot muted">' + esc(shown.length + ' of ' + offers.length + ' live offers') + '</p>';
+
+  return { text, html, total: offers.length };
 }
 
 function loadStoredWatchlist() {
@@ -1011,8 +1089,12 @@ function renderPage() {
   const pairKeyNow = pairParam ? pairParam.base + '|' + pairParam.quote : null;
   if (pairKeyNow !== lastPairKey) {
     bookExpanded = false;
+    listingsExpanded = false;
     lastPairKey = pairKeyNow;
   }
+
+  const listingsLimit = listingsExpanded ? 9999 : LISTINGS_DEFAULT;
+  const listingsBlock = !pairParam ? renderAllListingsSection(listingsLimit) : { text: '', html: '', total: 0 };
 
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-GB', {
@@ -1068,7 +1150,8 @@ function renderPage() {
     pairParam ? (detail?.statsText || '') : nowText,
     topPairsWidthRef,
     pairParam ? (detail?.bookText || '') : activityText,
-    pairParam ? (relatedBlock.text || '') : newOffersText,
+    pairParam ? (relatedBlock.text || '') : listingsBlock.text,
+    pairParam ? '' : newOffersText,
     pairParam ? '' : makersText,
     pairParam ? '' : diffText,
     pairParam ? '' : coinLiqText,
@@ -1137,6 +1220,20 @@ function renderPage() {
       html += block('Top pairs', topPairsText);
     }
     if (activityText) html += block('Activity', activityText);
+
+    if (listingsBlock.html) {
+      html += hr('=', w);
+      html += blockHtml('All listings', listingsBlock.html);
+      if (listingsBlock.total > LISTINGS_DEFAULT) {
+        const label = listingsExpanded
+          ? 'show fewer listings'
+          : 'show all listings (' + listingsBlock.total + ' total)';
+        html += '<p><button type="button" class="expand-btn" id="listings-toggle">» ' + esc(label) + '</button></p>\n';
+      }
+    } else if (listingsBlock.text) {
+      html += hr('=', w);
+      html += block('All listings', listingsBlock.text);
+    }
 
     if (coinLiqText) {
       html += hr('=', w);
@@ -1229,6 +1326,11 @@ function renderPage() {
 
   document.getElementById('book-toggle')?.addEventListener('click', () => {
     bookExpanded = !bookExpanded;
+    renderPage();
+  });
+
+  document.getElementById('listings-toggle')?.addEventListener('click', () => {
+    listingsExpanded = !listingsExpanded;
     renderPage();
   });
 
