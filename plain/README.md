@@ -26,8 +26,9 @@ A brolly-inspired minimal view of BasicSwap network liquidity. Lives in `/plain/
 
 ## Theme
 
-- **☾ / ☀ toggle** in the nav bar switches light and dark mode
-- Uses the same `bsx-theme` setting as the [full dashboard](../) — choice persists across both views
+- **☾ / ☀ toggle** — light and dark mode (shared with the [full dashboard](../))
+- **SKYNET toggle** — phosphor green / alert red HUD skin; BasicSwapDex logo turns red (saved in `bsx-skynet`)
+- SKYNet mode locks dark palette; light/dark toggle is disabled while SKYNET is on
 
 ## Data sources
 

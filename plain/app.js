@@ -33,6 +33,8 @@ const BAR_W = 12;
 const SPARK_W = 8;
 const RULE_MIN = 45;
 
+const XMR_DONATE = '85QDdyVftCW9zvwiVcR19eG4LhCejpRcM45yQHGLPKnxGs9p2iu5RxEB4C2KXRDFoZFL742gpiUKfGTA1ge1v8cMQRRUbW6';
+
 const ASCII_LOGO = [
   ' ____            _      ____                     ____            ',
   '| __ )  __ _ ___(_) ___/ ___|_      ____ _ _ __ |  _ \\  _____  __',
@@ -41,6 +43,15 @@ const ASCII_LOGO = [
   '|____/ \\__,_|___/_|\\___|____/ \\_/\\_/ \\__,_| .__/|____/ \\___/_/\\_\\',
   '                                          |_|                    ',
 ].join('\n');
+
+function isSkynetMode() {
+  return window.bsxPlainTheme?.isSkynet?.() ?? document.documentElement.classList.contains('skynet');
+}
+
+function sectionLabel(name) {
+  if (!isSkynetMode()) return name;
+  return '[ ' + String(name).toUpperCase() + ' ]';
+}
 
 let latestOrderbook = null;
 let allOffers = [];
@@ -365,13 +376,15 @@ function snapshotAgeSec() {
 function renderStaleBanner(ageSec) {
   if (ageSec == null) return '';
   let cls = 'stale-banner';
-  let msg = 'snapshot ' + f.ageShort(ageSec) + ' old';
+  let msg = isSkynetMode()
+    ? 'SIGNAL DEGRADED · snapshot ' + f.ageShort(ageSec) + ' old'
+    : 'snapshot ' + f.ageShort(ageSec) + ' old';
   if (ageSec >= STALE_ALERT_S) {
     cls += ' stale-alert';
-    msg += ' · data may be stale · not a live exchange feed';
+    msg += isSkynetMode() ? ' · DATA STALE' : ' · data may be stale · not a live exchange feed';
   } else if (ageSec >= STALE_WARN_S) {
     cls += ' stale-warn';
-    msg += ' · not a live exchange feed';
+    msg += isSkynetMode() ? ' · NOT LIVE FEED' : ' · not a live exchange feed';
   } else return '';
   return '<p class="' + cls + '">' + esc(msg) + '</p>\n';
 }
@@ -816,6 +829,20 @@ function embedMarkdown(base, quote, liq) {
   return '[' + label + '](' + url + ')';
 }
 
+function asciiBeerHtml() {
+  return '<span class="ascii-icon ascii-beer" aria-hidden="true">'
+    + '<span class="ascii-stack"><span class="beer-foam">~~</span><br>'
+    + '<span class="beer-body">[</span><span class="beer-fill">▓▓</span><span class="beer-body">]</span></span>'
+    + '</span>';
+}
+
+function asciiCoffeeHtml() {
+  return '<span class="ascii-icon ascii-coffee" aria-hidden="true">'
+    + '<span class="ascii-stack"><span class="coffee-steam">~ ~</span><br>'
+    + '<span class="coffee-cup">(</span><span class="coffee-liquid">~~</span><span class="coffee-cup">)</span></span>'
+    + '</span>';
+}
+
 function renderNewOffers24h() {
   const cutoff = Math.floor(Date.now() / 1000) - 86400;
   const byPair = {};
@@ -962,13 +989,13 @@ function renderNetwork() {
 
 function block(label, content) {
   if (!content) return '';
-  return '<p class="section">' + label + '</p>\n<pre class="data">' + esc(content) + '</pre>\n';
+  return '<p class="section">' + esc(sectionLabel(label)) + '</p>\n<pre class="data">' + esc(content) + '</pre>\n';
 }
 
 function blockHtml(label, html, note) {
   if (!html) return '';
   const noteHtml = note ? ' <span class="section-note muted">' + esc(note) + '</span>' : '';
-  return '<div class="table-wrap"><p class="section">' + esc(label) + noteHtml + '</p>\n' + html + '</div>\n';
+  return '<div class="table-wrap"><p class="section">' + esc(sectionLabel(label)) + noteHtml + '</p>\n' + html + '</div>\n';
 }
 
 function renderPage() {
@@ -1057,9 +1084,11 @@ function renderPage() {
 
   let html = '';
 
-  html += '<pre class="logo" aria-hidden="true">' + esc(ASCII_LOGO) + '</pre>\n';
-  html += '<p class="tagline">plain text market stats</p>\n';
-  html += '<p class="headline">BasicSwap · Particl SMSG network<br>' + esc(dateStr) + '</p>\n';
+  html += '<pre class="logo' + (isSkynetMode() ? ' skynet-logo' : '') + '" aria-hidden="true">'
+    + esc(ASCII_LOGO) + '</pre>\n';
+  html += '<p class="tagline">' + esc(isSkynetMode() ? 'MARKET INTELLIGENCE · PLAIN MODE' : 'plain text market stats') + '</p>\n';
+  html += '<p class="headline">' + esc(isSkynetMode() ? 'PARTSMSG MESH' : 'BasicSwap · Particl SMSG network')
+    + '<br>' + esc(dateStr) + '</p>\n';
   html += '<p class="nav-top"><a href="../">full markets view</a> · ' + themeToggleHtml() + '</p>\n';
 
   if (pairParam) {
@@ -1140,7 +1169,7 @@ function renderPage() {
   }
 
   html += hr('=', w);
-  html += '<details><summary>Network</summary><pre class="data">' + esc(networkText) + '</pre></details>\n';
+  html += block('Network', networkText);
 
   html += hr('-', w, true);
   html += '<footer class="muted">\n'
@@ -1171,11 +1200,32 @@ function renderPage() {
     + ' · <a href="diff.html">diff</a>'
     + ' · <a href="https://basicswapdex.com">basicswapdex.com</a></p>\n'
     + '<p class="kbd-hint muted">[ ] prev/next pair · Esc overview</p>\n'
+    + '<p>© ' + new Date().getFullYear() + ' BasicSwap DEX</p>\n'
+    + '<p>made with <span class="heart" aria-hidden="true">♥</span> by '
+    + '<a href="https://github.com/gerlofvanek" rel="noopener noreferrer">crz</a></p>\n'
+    + '<p class="donate-head">' + asciiBeerHtml() + ' ' + asciiCoffeeHtml()
+    + ' buy me a beer or coffee</p>\n'
+    + '<p class="donate-xmr"><span class="donate-label">XMR:</span> '
+    + '<button type="button" class="donate-btn" id="xmr-donate" title="Click to copy Monero address">'
+    + esc(XMR_DONATE) + '</button></p>\n'
     + '</footer>\n';
 
   out.innerHTML = html;
 
   window.bsxPlainTheme?.bind();
+  window.bsxPlainTheme?.syncToggleState?.();
+
+  document.getElementById('xmr-donate')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const prev = btn.textContent;
+    try {
+      await navigator.clipboard.writeText(XMR_DONATE);
+      btn.textContent = 'Copied!';
+    } catch (err) {
+      btn.textContent = 'Copy failed';
+    }
+    setTimeout(() => { btn.textContent = prev; }, 1500);
+  });
 
   document.getElementById('book-toggle')?.addEventListener('click', () => {
     bookExpanded = !bookExpanded;
@@ -1269,3 +1319,5 @@ async function loadAll() {
 
 loadAll();
 setInterval(loadAll, REFRESH_MS);
+
+document.addEventListener('bsx-skynet-change', () => renderPage());
