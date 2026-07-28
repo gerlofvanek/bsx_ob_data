@@ -1215,11 +1215,18 @@ def main():
                     continue
                 key = "/".join(sorted([cf, ct]))
                 pair_counts[key] = pair_counts.get(key, 0) + 1
+            snap_stats = book_dict.get("stats") or {}
+            snap_duration = max(1, int(time.time()) - started_ts)
             manifest.setdefault("snapshots", []).append({
                 "file": snap_name, "ts": book_dict["timestamp"],
                 "num_offers": book_dict["num_offers"],
                 "active_offers": book_dict.get("active_offers", 0),
                 "pair_counts": pair_counts,
+                "msgs_received": snap_stats.get("msgs_received", 0),
+                "revokes_invalid_sig": snap_stats.get("revokes_invalid_sig", 0),
+                "parse_errors": snap_stats.get("parse_errors", 0),
+                "msg_rate_per_s": round(
+                    snap_stats.get("msgs_received", 0) / snap_duration, 3),
             })
             manifest["snapshots"] = manifest["snapshots"][-200:]
             write_json_atomic(manifest_path, manifest)

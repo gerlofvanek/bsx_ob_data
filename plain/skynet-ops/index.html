@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex,nofollow" />
+<meta name="theme-color" content="#0a0a0a" />
+<title>Not found</title>
+<link rel="icon" type="image/png" sizes="32x32" href="../../images/favicon-32.png" />
+<script>
+(function () {
+  /* Change OPS_GATE_KEY before deploying. Gate is obscurity only — not real auth. */
+  var OPS_GATE_KEY = 'bsx-ops-k9m2x7p4';
+  var p = new URLSearchParams(location.search);
+  var k = p.get('k') || sessionStorage.getItem('bsx-ops-gate');
+  if (k !== OPS_GATE_KEY) {
+    document.documentElement.innerHTML =
+      '<body style="font:16px/1.5 system-ui,sans-serif;padding:2rem;background:#111;color:#888">'
+      + '<p>Not found</p></body>';
+    throw new Error('gate');
+  }
+  sessionStorage.setItem('bsx-ops-gate', k);
+  if (p.has('k')) history.replaceState(null, '', location.pathname);
+  try {
+    localStorage.setItem('bsx-skynet', '1');
+    localStorage.setItem('bsx-theme', 'dark');
+  } catch (e) { /* ignore */ }
+  document.title = 'SKYNET · network ops';
+})();
+</script>
+<script src="../theme.js"></script>
+<link rel="stylesheet" href="../style.css" />
+</head>
+<body>
+<main id="out" class="page">
+  <p class="muted">initializing ops…</p>
+</main>
+<script src="ops.js"></script>
+</body>
+</html>

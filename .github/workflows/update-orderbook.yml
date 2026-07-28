@@ -44,6 +44,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add orderbook.json health.json revoke_state.json snapshots plain status.txt stats.txt
-          git add plain/stats.txt plain/summary.json plain/status.txt plain/feed.xml plain/feed.json plain/diff.txt plain/diff-offers.txt plain/bulletins plain/pairs plain/health.html plain/diff.html 404.html
+          git add plain/stats.txt plain/summary.json plain/status.txt plain/feed.xml plain/feed.json plain/diff.txt plain/diff-offers.txt plain/bulletins plain/pairs plain/health.html plain/diff.html plain/skynet-ops/ops-data.json 404.html
           git diff --cached --quiet || git commit -m "Update orderbook $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           git push

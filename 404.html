@@ -6,7 +6,7 @@
 (function () {
   var path = location.pathname.replace(/\/$/, '');
   var m = path.match(/\/plain\/([A-Za-z0-9]+[-/][A-Za-z0-9_]+)$/i);
-  if (m) {
+  if (m && m[1].toLowerCase() !== 'skynet-ops') {
     var pair = m[1].toUpperCase().replace('/', '-');
     location.replace('/plain/?pair=' + encodeURIComponent(pair));
     return;

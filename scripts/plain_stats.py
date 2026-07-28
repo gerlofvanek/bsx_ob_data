@@ -676,6 +676,146 @@ def build_summary(book: dict, offers: list[dict], prices: dict[str, float]) -> d
     }
 
 
+def _median(vals: list[float]) -> float | None:
+    if not vals:
+        return None
+    s = sorted(vals)
+    n = len(s)
+    if n % 2:
+        return float(s[n // 2])
+    return (s[n // 2 - 1] + s[n // 2]) / 2.0
+
+
+def maker_watch(offers: list[dict], limit: int = 8, flag_min: int = 10) -> list[dict]:
+    counts: dict[str, int] = {}
+    for o in offers:
+        addr = o.get("addr_from") or ""
+        if addr:
+            counts[addr] = counts.get(addr, 0) + 1
+    total = len(offers) or 1
+    rows: list[dict] = []
+    for addr, n in sorted(counts.items(), key=lambda x: -x[1])[:limit]:
+        short = addr if len(addr) <= 12 else f"{addr[:6]}…{addr[-4:]}"
+        rows.append({
+            "addr": addr,
+            "addr_short": short,
+            "offers": n,
+            "pct": round(n / total * 100, 1),
+            "flagged": n >= flag_min,
+        })
+    return rows
+
+
+def build_ops_data(
+    book: dict,
+    health: dict | None,
+    manifest: list[dict],
+    now: int,
+) -> dict:
+    """Aggregated threat signals and baselines for the hidden SKYNET ops dashboard."""
+    stats = book.get("stats") or {}
+    h = health or {}
+    alerts: list[dict] = []
+    threat = 0
+
+    def bump(level: int, sev: str, msg: str) -> None:
+        nonlocal threat
+        alerts.append({"level": sev, "msg": msg})
+        threat = max(threat, level)
+
+    invalid = int(stats.get("revokes_invalid_sig") or 0)
+    if invalid > 0:
+        bump(3, "critical", f"Invalid revokes: {invalid} — possible censorship attempt")
+
+    msgs = int(h.get("msgs_received") or stats.get("msgs_received") or 0)
+    if h.get("ok") is False or msgs == 0:
+        bump(3, "critical", "Scrape failed or zero SMSG traffic")
+
+    ts = int(book.get("timestamp") or now)
+    age_s = max(0, now - ts)
+    if age_s > 2 * 3600:
+        bump(2, "critical", f"Snapshot stale ({age_s // 3600}h old)")
+    elif age_s > 30 * 60:
+        bump(1, "warn", f"Snapshot aging ({age_s // 60}m old)")
+
+    parse_err = int(stats.get("parse_errors") or 0)
+    if parse_err > 0:
+        bump(1, "warn", f"Parse errors: {parse_err}")
+
+    recent = manifest[-14:]
+    msg_rates = [float(s["msg_rate_per_s"]) for s in recent if s.get("msg_rate_per_s") is not None]
+    cur_rate = h.get("msg_rate_per_s")
+    median_rate = _median(msg_rates)
+    if cur_rate is not None and median_rate and median_rate > 0:
+        ratio = float(cur_rate) / median_rate
+        if ratio > 2.5:
+            bump(2, "warn", f"Message rate {cur_rate}/s is {ratio:.1f}× median ({median_rate:.1f}/s)")
+
+    active_hist = [int(s.get("active_offers") or 0) for s in recent]
+    cur_active = int(book.get("active_offers") or 0)
+    median_active = _median([float(x) for x in active_hist if x > 0])
+    if median_active and cur_active > 0:
+        drop_pct = (median_active - cur_active) / median_active * 100
+        if drop_pct > 30:
+            bump(
+                2, "warn",
+                f"Active offers down {drop_pct:.0f}% vs recent median "
+                f"({int(median_active)} → {cur_active})",
+            )
+
+    revokes_seen = int(stats.get("revokes_seen") or 0)
+    offers_parsed = int(stats.get("offers_parsed") or 0)
+    revoke_ratio = revokes_seen / max(offers_parsed, 1)
+    if revoke_ratio > 2.0 and revokes_seen > 20:
+        bump(1, "warn", f"High revoke ratio ({revoke_ratio:.1f} revokes per offer parsed)")
+
+    not_for_us = int(stats.get("not_for_us") or 0)
+    msgs_recv = int(stats.get("msgs_received") or 1)
+    foreign_ratio = not_for_us / max(msgs_recv, 1)
+
+    offers = live_offers(book, now)
+    makers = maker_watch(offers)
+    flagged_makers = [m for m in makers if m["flagged"]]
+    if flagged_makers:
+        bump(1, "warn", f"Maker spam: {len(flagged_makers)} address(es) with ≥10 offers")
+
+    labels = ["LOW", "WATCH", "ELEVATED", "HIGH"]
+    mtc = stats.get("message_type_counts") or {}
+    bsx_msgs = sum(int(mtc.get(k) or 0) for k in ("offer", "bid", "bid_accept", "offer_revoke"))
+
+    return {
+        "updated_at": book.get("updated_at"),
+        "timestamp": ts,
+        "threat_level": threat,
+        "threat_label": labels[threat],
+        "alerts": alerts,
+        "scores": {
+            "snapshot_age_s": age_s,
+            "foreign_smsg_ratio": round(foreign_ratio, 3),
+            "revoke_ratio": round(revoke_ratio, 2),
+            "msg_rate_per_s": cur_rate,
+            "msg_rate_median_14": round(median_rate, 2) if median_rate else None,
+            "active_offers_median_14": int(median_active) if median_active else None,
+        },
+        "health": h,
+        "stats": stats,
+        "market": {
+            "active_offers": cur_active,
+            "num_offers": book.get("num_offers"),
+            "unique_makers": book.get("unique_makers"),
+            "unique_pairs": book.get("unique_pairs"),
+            "last_bsx_msg_ts": book.get("last_bsx_msg_ts"),
+        },
+        "trends": {
+            "active_offers": active_hist[-12:],
+            "msg_rate_per_s": msg_rates[-12:],
+            "invalid_revokes": [int(s.get("revokes_invalid_sig") or 0) for s in recent[-12:]],
+        },
+        "maker_watch": makers,
+        "bsx_messages": bsx_msgs,
+    }
+
+
 def build_status(health: dict | None, book: dict) -> str:
     h = health or {}
     ok = h.get("ok")
@@ -914,6 +1054,12 @@ def generate_plain_artifacts(
     if root:
         write_text_atomic(os.path.join(root, "status.txt"), status_line + "\n")
         write_text_atomic(os.path.join(root, "stats.txt"), stats_txt)
+
+    ops_dir = os.path.join(out_dir, "skynet-ops")
+    write_json_atomic(
+        os.path.join(ops_dir, "ops-data.json"),
+        build_ops_data(book, health, manifest, now),
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

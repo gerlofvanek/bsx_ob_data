@@ -46,6 +46,25 @@ def test_render_diff_pair_churn():
     assert "BTC/LTC" in diff
 
 
+def test_build_ops_data(book):
+    health = {"ok": True, "msgs_received": 100, "msg_rate_per_s": 10.0, "duration_s": 10}
+    manifest = [{"active_offers": 90, "msg_rate_per_s": 8.0, "revokes_invalid_sig": 0}] * 5
+    ops = plain_stats.build_ops_data(book, health, manifest, int(book["timestamp"]))
+    assert ops["threat_label"] in ("LOW", "WATCH", "ELEVATED", "HIGH")
+    assert "alerts" in ops
+    assert "maker_watch" in ops
+    assert "scores" in ops
+
+
+def test_build_ops_data_invalid_revokes(book):
+    book = dict(book)
+    book["stats"] = dict(book.get("stats") or {})
+    book["stats"]["revokes_invalid_sig"] = 2
+    ops = plain_stats.build_ops_data(book, {"ok": True, "msgs_received": 1}, [], int(book["timestamp"]))
+    assert ops["threat_level"] >= 3
+    assert any("Invalid revokes" in a["msg"] for a in ops["alerts"])
+
+
 def test_render_offer_diff():
     old = {
         "timestamp": 1000,
