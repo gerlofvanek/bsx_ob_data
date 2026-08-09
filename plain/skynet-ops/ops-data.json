@@ -1,9 +1,13 @@
 {
-  "updated_at": "2026-08-09 10:20:07 UTC",
-  "timestamp": 1786270807,
-  "threat_level": 1,
-  "threat_label": "WATCH",
+  "updated_at": "2026-08-09 10:21:46 UTC",
+  "timestamp": 1786270906,
+  "threat_level": 2,
+  "threat_label": "ELEVATED",
   "alerts": [
+    {
+      "level": "warn",
+      "msg": "Message rate 52.273/s is 2.6\u00d7 median (20.0/s)"
+    },
     {
       "level": "warn",
       "msg": "Maker spam: 1 address(es) with \u226510 offers"
@@ -12,61 +16,60 @@
   "scores": {
     "snapshot_age_s": 0,
     "foreign_smsg_ratio": 0.024,
-    "revoke_ratio": 0.7,
-    "msg_rate_per_s": 13.395,
+    "revoke_ratio": 0.71,
+    "msg_rate_per_s": 52.273,
     "msg_rate_median_14": 20.0,
-    "active_offers_median_14": 46
+    "active_offers_median_14": 47
   },
   "health": {
-    "last_run_ts": 1786270807,
-    "last_run_iso": "2026-08-09 10:20:07 UTC",
+    "last_run_ts": 1786270906,
+    "last_run_iso": "2026-08-09 10:21:46 UTC",
     "last_bsx_msg_ts": 1786270762,
-    "duration_s": 43,
+    "duration_s": 11,
     "peers_scraped": 1,
-    "msgs_received": 576,
-    "msgs_decrypted": 562,
-    "offers_parsed": 330,
-    "offers_merged_from_previous": 3,
+    "msgs_received": 575,
+    "msgs_decrypted": 561,
+    "offers_parsed": 329,
+    "offers_merged_from_previous": 2,
     "revokes_seen": 232,
     "revokes_matched_offer": 166,
-    "revokes_orphan": 23915,
+    "revokes_orphan": 23903,
     "revoked_offers_dropped": 166,
     "buckets_requested": 13,
-    "wants_sent": 332,
-    "msg_rate_per_s": 13.395,
+    "wants_sent": 331,
+    "msg_rate_per_s": 52.273,
     "ok": true
   },
   "stats": {
-    "msgs_received": 576,
-    "msgs_decrypted": 562,
-    "offers_parsed": 330,
+    "msgs_received": 575,
+    "msgs_decrypted": 561,
+    "offers_parsed": 329,
     "decrypt_errors": 14,
     "not_for_us": 14,
     "parse_errors": 0,
     "message_type_counts": {
-      "offer": 330,
+      "offer": 329,
       "offer_revoke": 232
     },
     "revokes_seen": 232,
     "buckets_requested": 13,
     "haves_received": 13,
-    "wants_sent": 332,
-    "offers_merged_from_previous": 3,
+    "wants_sent": 331,
+    "offers_merged_from_previous": 2,
     "revoked_offers_dropped": 166,
     "revokes_invalid_sig": 0,
     "revokes_matched_offer": 166,
-    "revokes_orphan": 23915
+    "revokes_orphan": 23903
   },
   "market": {
-    "active_offers": 102,
-    "num_offers": 167,
-    "unique_makers": 96,
+    "active_offers": 101,
+    "num_offers": 165,
+    "unique_makers": 95,
     "unique_pairs": 21,
     "last_bsx_msg_ts": 1786270762
   },
   "trends": {
     "active_offers": [
-      35,
       31,
       30,
       30,
@@ -77,10 +80,10 @@
       59,
       94,
       91,
-      102
+      102,
+      101
     ],
     "msg_rate_per_s": [
-      11.886,
       27.158,
       27.158,
       14.872,
@@ -91,7 +94,8 @@
       31.842,
       15.972,
       14.487,
-      13.395
+      13.395,
+      52.273
     ],
     "invalid_revokes": [
       0,
@@ -113,14 +117,14 @@
       "addr": "PgTfpGmwtXppGVrNUAdJicKAVErZBEK2xo",
       "addr_short": "PgTfpG\u2026K2xo",
       "offers": 34,
-      "pct": 33.3,
+      "pct": 33.7,
       "flagged": true
     },
     {
       "addr": "PnL9Hn2M1gP95ZAbSAbxKjc6nhwiLEfeN7",
       "addr_short": "PnL9Hn\u2026feN7",
       "offers": 4,
-      "pct": 3.9,
+      "pct": 4.0,
       "flagged": false
     },
     {
@@ -133,13 +137,6 @@
     {
       "addr": "PpxRKUX7hZETgLzoHocACaMrvfL6XH5eLG",
       "addr_short": "PpxRKU\u20265eLG",
-      "offers": 1,
-      "pct": 1.0,
-      "flagged": false
-    },
-    {
-      "addr": "PdymoRMdP3fGa4nFRKAAoiG3BMbYJa42Bs",
-      "addr_short": "PdymoR\u202642Bs",
       "offers": 1,
       "pct": 1.0,
       "flagged": false
@@ -164,7 +161,14 @@
       "offers": 1,
       "pct": 1.0,
       "flagged": false
+    },
+    {
+      "addr": "PcpvFSR83uDiCaStszhkbQynuEdr1JitJe",
+      "addr_short": "PcpvFS\u2026itJe",
+      "offers": 1,
+      "pct": 1.0,
+      "flagged": false
     }
   ],
-  "bsx_messages": 562
+  "bsx_messages": 561
 }
