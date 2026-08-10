@@ -851,6 +851,48 @@ class BSXOfferListener(P2PInterface):
                 # without publishing the full identifier.
                 o2["addr_from"] = (a[:4] + "…" + a[-4:]) if len(a) > 9 else a
             offers.append(o2)
+        # Collapse maker reposts. BasicSwap clients re-broadcast their offers every
+        # few minutes (new SMSG id each time, often slightly repriced) and revoke
+        # the superseded copy. When the revoke is missed (short scrape window, CI
+        # outage) several live copies of the same offer coexist in the book. A live
+        # offer from the same maker on the same directed pair whose size AND rate
+        # are within REPOST_TOLERANCE of a newer copy is a supersession, not extra
+        # liquidity — keep only the newest. Genuine ladders (materially different
+        # size or rate) and expired offers are left alone (UI filters expired).
+        REPOST_TOLERANCE = 0.05
+
+        def _near(a, b):
+            a, b = a or 0, b or 0
+            if a == b:
+                return True
+            if not a or not b:
+                return False
+            return abs(a - b) / max(abs(a), abs(b)) <= REPOST_TOLERANCE
+
+        def _is_live(o):
+            return (o.get("timestamp", 0) + o.get("time_valid", 0)) > now
+
+        groups = {}
+        for o2 in offers:
+            if not o2.get("addr_from") or not _is_live(o2):
+                continue
+            key = (o2["addr_from"], o2.get("coin_from"), o2.get("coin_to"))
+            groups.setdefault(key, []).append(o2)
+        superseded_ids = set()
+        for grp in groups.values():
+            if len(grp) < 2:
+                continue
+            grp.sort(key=lambda o: o.get("timestamp", 0), reverse=True)
+            kept = []
+            for o2 in grp:
+                if any(_near(o2.get("amount_from"), k.get("amount_from"))
+                       and _near(o2.get("rate"), k.get("rate")) for k in kept):
+                    superseded_ids.add(o2.get("msg_id"))
+                else:
+                    kept.append(o2)
+        if superseded_ids:
+            offers = [o for o in offers if o.get("msg_id") not in superseded_ids]
+        self.stats["reposts_collapsed"] = len(superseded_ids)
         unique_makers = len({o.get("addr_from", "") for o in offers if o.get("addr_from")})
         unique_pairs = len({
             tuple(sorted([o.get("coin_from", ""), o.get("coin_to", "")]))

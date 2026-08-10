@@ -274,6 +274,43 @@ def test_highest_bid_tolerates_missing_attribute():
         assert o["highest_bid"] is None
 
 
+def test_reposts_collapsed_to_newest_live_copy():
+    """Live offers from the same maker on the same directed pair with size and
+    rate within tolerance are maker reposts whose revoke we missed — only the
+    newest copy may be published, the rest counted in stats.reposts_collapsed."""
+    import time as _time
+    now = int(_time.time())
+    listener = _fake_listener_with_offers()
+    common = {"coin_from": "BTC", "coin_to": "XMR",
+              "amount_from": 191566, "amount_to": 35829464,
+              "rate": 35829464 / 191566,
+              "addr_from": "PgTfpGmwtXppGVrNUAdJicKAVErZBEK2xo",
+              "time_valid": 3600}
+    listener.offers = {
+        # Identical live copy, posted 20 min earlier -> collapsed.
+        "rep-old": {"msg_id": "rep-old", "timestamp": now - 1200, **common},
+        # Repriced repost: size and rate drift ~0.5% between broadcasts -> collapsed.
+        "rep-repriced": {"msg_id": "rep-repriced", "timestamp": now - 600,
+                         **{**common, "amount_from": 192500,
+                            "rate": 35829464 / 192500}},
+        # Newest copy -> the one that survives.
+        "rep-new": {"msg_id": "rep-new", "timestamp": now - 30, **common},
+        # Same maker+pair but 5x the size -> a genuine ladder rung, kept.
+        "ladder": {"msg_id": "ladder", "timestamp": now - 60,
+                   **{**common, "amount_from": 191566 * 5,
+                      "amount_to": 35829464 * 5}},
+        # Expired duplicate -> left alone (UI filters expired offers).
+        "expired-dup": {"msg_id": "expired-dup", "timestamp": now - 7200, **common},
+        # Different maker, same everything else -> kept.
+        "other-maker": {"msg_id": "other-maker", "timestamp": now - 300,
+                        **{**common, "addr_from": "PsomeOtherMakerAddress12345"}},
+    }
+    out = listener.get_orderbook_dict()
+    ids = {o["msg_id"] for o in out["offers"]}
+    assert ids == {"rep-new", "ladder", "expired-dup", "other-maker"}
+    assert out["stats"]["reposts_collapsed"] == 2
+
+
 def test_offer_revoke_message_parser_round_trip():
     """OfferRevokeMessage.from_bytes must extract offer_msg_id from the standard
     tag-prefixed wire format used by basicswap.messages_npb."""
