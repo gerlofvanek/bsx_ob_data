@@ -3,6 +3,12 @@ name: Update Orderbook
 on:
   workflow_dispatch:        # Triggered externally (cron-job.org) or manually from the Actions tab
 
+# Serialize runs: a trigger arriving while a run is in flight queues instead of
+# racing it to the push (overlapping runs caused non-fast-forward push failures).
+concurrency:
+  group: update-orderbook
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -46,4 +52,13 @@ jobs:
           git add orderbook.json health.json revoke_state.json snapshots plain status.txt stats.txt
           git add plain/stats.txt plain/summary.json plain/status.txt plain/feed.xml plain/feed.json plain/diff.txt plain/diff-offers.txt plain/bulletins plain/pairs plain/health.html plain/diff.html plain/skynet-ops/ops-data.json 404.html
           git diff --cached --quiet || git commit -m "Update orderbook $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          # If another run pushed while we were scraping, rebase our commit on top
+          # and retry. -X theirs keeps THIS run's freshly generated artifacts when
+          # the same files conflict (during rebase, "theirs" = the commit being
+          # replayed, i.e. ours - and newer scrape data always wins anyway).
+          for attempt in 1 2 3; do
+            git push && exit 0
+            echo "push rejected (attempt $attempt); rebasing onto remote and retrying"
+            git pull --rebase -X theirs origin "$(git rev-parse --abbrev-ref HEAD)"
+          done
           git push
