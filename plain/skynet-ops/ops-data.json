@@ -1,9 +1,13 @@
 {
-  "updated_at": "2026-08-11 17:42:19 UTC",
-  "timestamp": 1786470139,
-  "threat_level": 1,
-  "threat_label": "WATCH",
+  "updated_at": "2026-08-11 17:46:53 UTC",
+  "timestamp": 1786470413,
+  "threat_level": 2,
+  "threat_label": "ELEVATED",
   "alerts": [
+    {
+      "level": "warn",
+      "msg": "Message rate 51.5/s is 2.8\u00d7 median (18.1/s)"
+    },
     {
       "level": "warn",
       "msg": "Maker spam: 1 address(es) with \u226510 offers"
@@ -13,75 +17,74 @@
     "snapshot_age_s": 0,
     "foreign_smsg_ratio": 0.018,
     "revoke_ratio": 0.68,
-    "msg_rate_per_s": 30.45,
-    "msg_rate_median_14": 17.18,
-    "active_offers_median_14": 46
+    "msg_rate_per_s": 51.5,
+    "msg_rate_median_14": 18.13,
+    "active_offers_median_14": 45
   },
   "health": {
-    "last_run_ts": 1786470139,
-    "last_run_iso": "2026-08-11 17:42:19 UTC",
-    "last_bsx_msg_ts": 1786470117,
-    "duration_s": 20,
+    "last_run_ts": 1786470413,
+    "last_run_iso": "2026-08-11 17:46:53 UTC",
+    "last_bsx_msg_ts": 1786470311,
+    "duration_s": 12,
     "peers_scraped": 1,
-    "msgs_received": 609,
-    "msgs_decrypted": 598,
-    "offers_parsed": 356,
+    "msgs_received": 618,
+    "msgs_decrypted": 607,
+    "offers_parsed": 362,
     "offers_merged_from_previous": 1,
-    "revokes_seen": 242,
-    "revokes_matched_offer": 183,
-    "revokes_orphan": 30877,
-    "revoked_offers_dropped": 183,
+    "revokes_seen": 245,
+    "revokes_matched_offer": 186,
+    "revokes_orphan": 30876,
+    "revoked_offers_dropped": 186,
     "buckets_requested": 12,
-    "wants_sent": 352,
-    "msg_rate_per_s": 30.45,
+    "wants_sent": 357,
+    "msg_rate_per_s": 51.5,
     "ok": true
   },
   "stats": {
-    "msgs_received": 609,
-    "msgs_decrypted": 598,
-    "offers_parsed": 356,
+    "msgs_received": 618,
+    "msgs_decrypted": 607,
+    "offers_parsed": 362,
     "decrypt_errors": 11,
     "not_for_us": 11,
     "parse_errors": 0,
     "message_type_counts": {
-      "offer": 356,
-      "offer_revoke": 242
+      "offer": 362,
+      "offer_revoke": 245
     },
-    "revokes_seen": 242,
+    "revokes_seen": 245,
     "buckets_requested": 12,
     "haves_received": 12,
-    "wants_sent": 352,
+    "wants_sent": 357,
     "offers_merged_from_previous": 1,
     "reposts_collapsed": 17,
-    "revoked_offers_dropped": 183,
+    "revoked_offers_dropped": 186,
     "revokes_invalid_sig": 0,
-    "revokes_matched_offer": 183,
-    "revokes_orphan": 30877
+    "revokes_matched_offer": 186,
+    "revokes_orphan": 30876
   },
   "market": {
-    "active_offers": 87,
-    "num_offers": 157,
+    "active_offers": 88,
+    "num_offers": 160,
     "unique_makers": 106,
     "unique_pairs": 20,
-    "last_bsx_msg_ts": 1786470117
+    "last_bsx_msg_ts": 1786470311
   },
   "trends": {
     "active_offers": [
-      44,
       46,
       40,
       30,
       41,
-      48,
-      47,
-      47,
-      53,
-      54,
-      65,
-      87
+      46,
+      45,
+      45,
+      49,
+      50,
+      60,
+      80,
+      88
     ],
     "msg_rate_per_s": [
-      15.973,
       9.574,
       15.143,
       19.259,
@@ -92,7 +95,8 @@
       29.95,
       13.953,
       13.864,
-      30.45
+      30.45,
+      51.5
     ],
     "invalid_revokes": [
       0,
@@ -114,14 +118,14 @@
       "addr": "PgTfpGmwtXppGVrNUAdJicKAVErZBEK2xo",
       "addr_short": "PgTfpG\u2026K2xo",
       "offers": 17,
-      "pct": 19.5,
+      "pct": 19.3,
       "flagged": true
     },
     {
       "addr": "PnL9Hn2M1gP95ZAbSAbxKjc6nhwiLEfeN7",
       "addr_short": "PnL9Hn\u2026feN7",
-      "offers": 2,
-      "pct": 2.3,
+      "offers": 4,
+      "pct": 4.5,
       "flagged": false
     },
     {
@@ -160,12 +164,12 @@
       "flagged": false
     },
     {
-      "addr": "PantdVqdiECbJNxUACYobSsC1BRybr1RLS",
-      "addr_short": "PantdV\u20261RLS",
+      "addr": "PYCyQJpUnCvggdciCpBRdpmNvpB4pTgayH",
+      "addr_short": "PYCyQJ\u2026gayH",
       "offers": 1,
       "pct": 1.1,
       "flagged": false
     }
   ],
-  "bsx_messages": 598
+  "bsx_messages": 607
 }
