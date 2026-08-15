@@ -1,18 +1,18 @@
 plain text market stats
 
 BasicSwap · Particl SMSG network
-2026-08-15 12:52:31 UTC
+2026-08-15 12:57:17 UTC
 
 =============================================
 
 Now
 
-listed liquidity  $199K
+listed liquidity  $174K
 active pairs      16
-active makers     100
-live offers       76  (+65.2% vs 24h)
-new offers · 24h   127
-snapshot age      0s
+active makers     98
+live offers       72  (+46.9% vs 24h)
+new offers · 24h   121
+snapshot age      1s
 
 =============================================
 
@@ -20,18 +20,18 @@ Top pairs
 
  #  Pair        Liq    %  Bar                Spread   N  Δ24h  Trend   
 --  --------  -----  ---  ------------  -----------  --  ----  --------
- 1  BTC/XMR    $71K  36%  ############    fair 1.2%  22   -25  ·▂·▂▂▄·▇
- 2  LTC/XMR    $51K  26%  #########       wide 3.0%  14   -19  ▁·▃▆▆·▇▆
- 3  BTC/LTC    $49K  25%  ########        wide 6.1%  12    -3  ▂·▂▄▄▆▇▇
- 4  LTC/WOW   $7.2K   4%  #             wide 155.6%   3     0  ········
- 5  DOGE/LTC  $6.8K   3%  #              wide 18.9%   5    +5  ·▇▇▇▇▇▇▇
- 6  BTC/DOGE  $6.8K   3%  #              wide 18.7%   5    +5  ····▁▁▇▇
+ 1  BTC/XMR    $50K  29%  ############    fair 1.2%  21   -28  ▂·▂▂▄·▇▆
+ 2  BTC/LTC    $49K  28%  ############    wide 6.1%  12    -2  ·▂▄▄▆▇▇▇
+ 3  LTC/XMR    $49K  28%  ############    wide 3.0%  13   -21  ·▃▆▆·▇▆▁
+ 4  LTC/WOW   $7.2K   4%  ##            wide 155.6%   3     0  ········
+ 5  DOGE/LTC  $6.8K   4%  ##             wide 18.9%   5    +5  ········
+ 6  BTC/DOGE  $6.8K   4%  ##             wide 18.7%   5    +5  ···▁▁▇▇▇
  7  BTC/WOW   $3.5K   2%  #             wide 156.1%   2     0  ········
- 8  BCH/XMR    $807   0%                          —   1    -5  ········
+ 8  BCH/XMR    $806   0%                          —   1    -5  ········
  9  BCH/WOW    $559   0%                          —   2     0  ········
-10  LTC/PIVX   $393   0%                  wide 4.6%   2    +2  ·····▄▄▇
+10  LTC/PIVX   $401   0%                  wide 4.6%   2    +2  ····▄▄▇▇
 
-$198K shown · $199K total · top 10 pairs
+$174K shown · $174K total · top 10 pairs
 
 =============================================
 
@@ -40,22 +40,22 @@ Activity
 last 12 snapshots · ~1h window
 
 live offers
- 76|        ####
- 54|  ##########
+ 76|       #####
+ 54| ###########
  31|############
 
 total offers
-127|         ###
-104|  ##########
+127|        ####
+104| ###########
  82|############
 
 active pairs
- 16|         ###
- 13|        ####
+ 16|        ####
+ 13|       #####
  10|############
    +------------
     15/0815/0815/0815/0815/0815/0815/0815/0815/0815/0815/08*15/08
-now 76 live · 127 total · 16 pairs
+now 72 live · 121 total · 16 pairs
 
 =============================================
 
@@ -63,11 +63,11 @@ Liquidity by coin
 
 Coin    Liq  Bar         
 ----  -----  ------------
-XMR    $80K  ############
-BTC    $70K  ##########  
-LTC    $46K  #######     
+BTC    $70K  ############
+XMR    $60K  ##########  
+LTC    $43K  #######     
 WOW   $1.7K              
-PIVX   $744              
+PIVX   $760              
 DOGE   $252              
 PART     $2              
 DASH     $1              
@@ -76,11 +76,11 @@ DASH     $1
 
 Offer freshness
 
-<1h  71
+<1h  67
 1–6h  4
 6–24h  1
 >24h  0
-<6h left  75
+<6h left  71
 
 =============================================
 
@@ -88,8 +88,8 @@ New offers · 24h
 
 Pair      New
 --------  ---
-BTC/XMR   +22
-LTC/XMR   +14
+BTC/XMR   +21
+LTC/XMR   +13
 BTC/LTC   +12
 DOGE/LTC   +5
 BTC/DOGE   +5
@@ -103,7 +103,7 @@ Makers
 
 Maker       Offers    Liq  Pairs
 ----------  ------  -----  -----
-PnL9…feN7        2   $41K      2
+PnL9…feN7        1   $20K      1
 PcGw…PMPK        1   $19K      1
 PbZr…vt1Z        1   $19K      1
 WizardSwap       8   $19K      5
@@ -116,16 +116,17 @@ PmtR…zjoM        1  $4.4K      1
 
 Since last snapshot
 
-since previous snapshot (20260815T124702Z.json)
-live offers  +3  (73 → 76)
-total offers +4  (123 → 127)
+since previous snapshot (20260815T125231Z.json)
+live offers  -4  (76 → 72)
+total offers -6  (127 → 121)
 pairs         unchanged
 
 pair offer churn (top)
-  BTC/XMR      +4  (38 → 42)
-  LTC/XMR      -1  (36 → 35)
-  LTC/PIVX     +1  (1 → 2)
+  LTC/XMR      -3  (35 → 32)
+  LTC/PART_BLIND -1  (3 → 2)
+  BTC/XMR      -1  (42 → 41)
+  BCH/LTC      -1  (5 → 4)
 
 ---------------------------------------------
-market data last fetched at: 2026-08-15 12:52:31 UTC
+market data last fetched at: 2026-08-15 12:57:17 UTC
 plain view: /plain/ · full view: /
