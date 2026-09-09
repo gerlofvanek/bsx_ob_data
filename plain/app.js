@@ -81,6 +81,8 @@ let cachedSummary = null;
 const f = {
   fiat(n) {
     if (!isFinite(n)) return '—';
+    if (n === 0) return '$0';
+    if (Math.abs(n) < 1) return '$' + n.toFixed(2);
     return '$' + Math.round(n).toLocaleString('en-US');
   },
   fiatCompact(n) {

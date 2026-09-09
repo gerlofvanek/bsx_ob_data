@@ -90,7 +90,14 @@ const NET_LABELS = { smsg: 'SMSG', nostr: 'Nostr', simplex: 'SimpleX' };
    FORMATTERS
    ============================================================================ */
 const f = {
-  fiat(n){ if(!isFinite(n)) return '—'; return '$'+Math.round(n).toLocaleString('en-US'); },
+  fiat(n){
+    if(!isFinite(n)) return '—';
+    if(n===0) return '$0';
+    // PART-scale offers are often well under $1; rounding those to the nearest
+    // dollar made Est. value / pair USD print as $0.
+    if(Math.abs(n)<1) return '$'+n.toFixed(2);
+    return '$'+Math.round(n).toLocaleString('en-US');
+  },
   fiatCompact(n){
     if(!isFinite(n) || n===null) return '—';
     if(n>=1e9) return '$'+(n/1e9).toFixed(n>=1e10?0:1)+'B';
