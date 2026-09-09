@@ -60,6 +60,9 @@ PARTICL_MAINNET_PORT = 51738
 DNS_SEEDS = ["mainnet-seed.particl.io", "dnsseed-mainnet.particl.community"]
 SMSG_HDR_LEN = 108
 SMSG_ID_LEN = 28
+# Keep this many timestamped snapshot files + manifest.json. Older files are
+# deleted so GitHub Pages is not asked to rebuild tens of thousands of JSONs.
+HISTORY_KEEP = 200
 
 
 class MessageTypes(IntEnum):
@@ -1138,6 +1141,39 @@ def clean_history_snapshots(history_dir: str, revoke_requests: dict, live_offers
     return removed_total
 
 
+def prune_history_snapshots(history_dir: str, keep: int = HISTORY_KEEP) -> int:
+    """Delete snapshot JSON files that are not in the last `keep` manifest
+    entries. Leaves manifest.json and non-json files alone. Returns the number
+    of files removed."""
+    if keep < 1 or not os.path.isdir(history_dir):
+        return 0
+    manifest_path = os.path.join(history_dir, "manifest.json")
+    try:
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+    except Exception:
+        return 0
+    keep_names = {
+        entry.get("file")
+        for entry in (manifest.get("snapshots") or [])[-keep:]
+        if entry.get("file")
+    }
+    keep_names.add("manifest.json")
+    deleted = 0
+    for name in os.listdir(history_dir):
+        if name in keep_names or not name.endswith(".json"):
+            continue
+        path = os.path.join(history_dir, name)
+        if not os.path.isfile(path):
+            continue
+        try:
+            os.remove(path)
+            deleted += 1
+        except OSError as e:
+            log.warning(f"Could not prune {path}: {e}")
+    return deleted
+
+
 def merge_previous_offers(listener, path: str) -> int:
     """Carry still-active offers from a previous snapshot into this run so the
     published orderbook is the union of what we saw now and what we saw before
@@ -1478,7 +1514,8 @@ def main():
         except Exception as e:
             log.warning(f"state-file write failed: {e}")
 
-    # Snapshot manifest: <history-dir>/<UTC-iso>.json + manifest.json with last 200 entries.
+    # Snapshot manifest: <history-dir>/<UTC-iso>.json + manifest.json with
+    # the last HISTORY_KEEP entries. Older snapshot files are deleted.
     if args.history_dir:
         try:
             os.makedirs(args.history_dir, exist_ok=True)
@@ -1513,9 +1550,12 @@ def main():
                 "msg_rate_per_s": round(
                     snap_stats.get("msgs_received", 0) / snap_duration, 3),
             })
-            manifest["snapshots"] = manifest["snapshots"][-200:]
+            manifest["snapshots"] = manifest["snapshots"][-HISTORY_KEEP:]
             write_json_atomic(manifest_path, manifest)
             log.info(f"Wrote snapshot {snap_name} + updated manifest")
+            pruned = prune_history_snapshots(args.history_dir, HISTORY_KEEP)
+            if pruned:
+                log.info(f"Pruned {pruned} snapshot file(s) beyond the last {HISTORY_KEEP}")
             # Retroactively scrub offers from older snapshots whose revoke we have
             # since observed (covers snapshots written before a revoke arrived and
             # pre-fix snapshots with byte-swapped msg ids).

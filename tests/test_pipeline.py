@@ -213,6 +213,32 @@ def test_aes_decrypt_roundtrip_valid_padding():
     assert scraper.aes_decrypt(ct, key, iv) == plain
 
 
+def test_prune_history_snapshots(tmp_path):
+    hist = tmp_path / "snapshots"
+    hist.mkdir()
+    listed = []
+    for i in range(5):
+        name = f"2026010{i}T000000Z.json"
+        (hist / name).write_text("{}")
+        listed.append({"file": name, "ts": i})
+    (hist / "orphan.json").write_text("{}")
+    (hist / "notes.txt").write_text("leave me")
+    (hist / "manifest.json").write_text(json.dumps({
+        "snapshots": listed[-3:],
+    }))
+    deleted = scraper.prune_history_snapshots(str(hist), keep=3)
+    assert deleted == 3
+    remaining = set(os.listdir(hist))
+    assert remaining == {
+        "manifest.json",
+        "notes.txt",
+        "20260102T000000Z.json",
+        "20260103T000000Z.json",
+        "20260104T000000Z.json",
+    }
+    assert scraper.prune_history_snapshots(str(hist), keep=3) == 0
+
+
 def test_write_json_atomic(tmp_path):
     path = str(tmp_path / "out.json")
     scraper.write_json_atomic(path, {"a": 1})
