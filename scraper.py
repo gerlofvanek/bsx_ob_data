@@ -4,10 +4,10 @@
 """
 BSX Orderbook Scraper - Self-contained
 
-Connects directly to Particl P2P network, receives SMSG messages,
-decrypts BSX offers, and outputs orderbook as JSON.
+Connects directly to Particl P2P (SMSG), Nostr relays, and the SimpleX
+#bsx group, decrypts BSX offers, and outputs orderbook as JSON.
 
-NO particld. NO BasicSwap. NO blockchain sync. Just raw P2P.
+NO particld. NO BasicSwap. NO blockchain sync.
 
 Usage:
     python scraper.py --auto --duration 15 -o orderbook.json
@@ -18,6 +18,7 @@ Requirements:
 
 import argparse
 import asyncio
+import base64
 import hashlib
 import hmac
 import json
@@ -26,6 +27,7 @@ import os
 import socket
 import struct
 import sys
+import threading
 import time
 from enum import IntEnum
 
@@ -106,6 +108,8 @@ COIN_TICKERS = {
 # Mirrors basicswap/chainparams.py (XMR_COIN = 10**12, WOW_COIN = 10**11).
 COIN_DECIMALS = {6: 12, 9: 11}
 DEFAULT_DECIMALS = 8
+
+KNOWN_MESSAGE_NETS = ("smsg", "nostr", "simplex")
 
 
 # ============================================================================
@@ -514,6 +518,48 @@ def format_amount(amount: int, coin_id: int) -> str:
     return f"{amount / (10 ** decimals):.{decimals}f}"
 
 
+def parse_message_nets(raw) -> list:
+    """Decode OfferMessage.message_nets ('smsg,nostr' / 'b.simplex') to known names."""
+    if raw is None:
+        return []
+    if isinstance(raw, (bytes, bytearray)):
+        try:
+            raw = raw.decode("ascii")
+        except UnicodeDecodeError:
+            return []
+    if not isinstance(raw, str) or not raw.strip():
+        return []
+    out = []
+    for part in raw.split(","):
+        name = part.strip().lower()
+        if name.startswith("b."):
+            name = name[2:]
+        if name in KNOWN_MESSAGE_NETS and name not in out:
+            out.append(name)
+    return out
+
+
+def decode_message_nets_field(raw) -> str:
+    if raw is None:
+        return ""
+    if isinstance(raw, (bytes, bytearray)):
+        try:
+            return raw.decode("ascii")
+        except UnicodeDecodeError:
+            return ""
+    return str(raw) if raw else ""
+
+
+def normalize_seen_on(seen) -> list:
+    if not isinstance(seen, list) or not seen:
+        return ["smsg"]
+    out = []
+    for name in seen:
+        if name in KNOWN_MESSAGE_NETS and name not in out:
+            out.append(name)
+    return out or ["smsg"]
+
+
 def write_text_atomic(path: str, text: str) -> None:
     """Write via a temp file + os.replace so readers (CI, the site, other runs)
     never observe a truncated file if we crash mid-write."""
@@ -567,7 +613,13 @@ class BSXOfferListener(P2PInterface):
                       "revokes_seen": 0,
                       "buckets_requested": 0, "haves_received": 0,
                       "wants_sent": 0,
-                      "offers_merged_from_previous": 0}
+                      "offers_merged_from_previous": 0,
+                      "nostr_relays_ok": 0, "nostr_relays_failed": 0,
+                      "nostr_events": 0, "nostr_offers": 0,
+                      "simplex_ok": 0, "simplex_messages": 0,
+                      "simplex_offers": 0}
+        # SMSG callbacks run on the P2P thread; Nostr workers are extra threads.
+        self._lock = threading.Lock()
         # Map of offer_msg_id -> count of bid messages observed for it.
         self.bid_counts = {}
         # Map of offer_msg_id -> list of decoded bid dicts (amount, amount_to, rate, time_valid,
@@ -661,130 +713,215 @@ class BSXOfferListener(P2PInterface):
                 break
             smsg_msg = data[ofs:ofs + msg_len]
             ofs += msg_len
-            self.stats["msgs_received"] += 1
-            msg_id = smsg_get_id(smsg_msg).hex()
-            self.seen_msg_ids.add(msg_id)
+            with self._lock:
+                self.stats["msgs_received"] += 1
+                msg_id = smsg_get_id(smsg_msg).hex()
+                self.seen_msg_ids.add(msg_id)
 
             try:
                 result = smsg_decrypt(self.network_privkey, smsg_msg)
             except AssertionError:
                 # MAC mismatch = SMSG was encrypted to a different recipient pubkey
                 # (private chat or other app), not addressed to BSX. Not really an error.
-                self.stats["not_for_us"] += 1
-                self.stats["decrypt_errors"] += 1
+                with self._lock:
+                    self.stats["not_for_us"] += 1
+                    self.stats["decrypt_errors"] += 1
                 continue
             except Exception:
-                self.stats["parse_errors"] += 1
-                self.stats["decrypt_errors"] += 1
+                with self._lock:
+                    self.stats["parse_errors"] += 1
+                    self.stats["decrypt_errors"] += 1
                 continue
 
-            self.stats["msgs_decrypted"] += 1
-            try:
-                payload_hex = result["hex"]
-                msg_type = int(payload_hex[:2], 16)
-                # Track every BSX message type we see (offers, bids, accepts, revokes, ...)
-                label = MESSAGE_TYPE_LABELS.get(msg_type, f"type_{msg_type}")
-                self.stats["message_type_counts"][label] = (
-                    self.stats["message_type_counts"].get(label, 0) + 1
-                )
-                self.last_bsx_msg_ts = result.get("sent", self.last_bsx_msg_ts)
-                # Track bid -> offer linkage so the orderbook can show "interest" per offer.
-                if msg_type == MessageTypes.BID:
-                    try:
-                        bid_data = bytes.fromhex(payload_hex[2:])
-                        bm = BidMessage(); bm.from_bytes(bid_data)
-                        oid = getattr(bm, "offer_msg_id", b"")
-                        if isinstance(oid, (bytes, bytearray)) and oid:
-                            oid_hex = oid.hex()
-                            self.bid_counts[oid_hex] = self.bid_counts.get(oid_hex, 0) + 1
-                            # Capture the negotiable terms so the orderbook can surface the
-                            # highest open bid (sent + time_valid drives active-bid filtering).
-                            self.bids_per_offer.setdefault(oid_hex, []).append({
-                                "amount": int(getattr(bm, "amount", 0) or 0),
-                                "amount_to": int(getattr(bm, "amount_to", 0) or 0),
-                                "rate": int(getattr(bm, "rate", 0) or 0),
-                                "time_valid": int(getattr(bm, "time_valid", 0) or 0),
-                                "sent": int(result.get("sent", 0) or 0),
-                            })
-                    except Exception:
-                        pass
-                    continue
-                # Record explicit revocations so we can drop dead offers before publishing.
-                # The signature is kept and verified at publish time against the offer's
-                # addr_from, so third parties can't censor offers off the orderbook.
-                if msg_type == MessageTypes.OFFER_REVOKE:
-                    self.stats["revokes_seen"] += 1
-                    try:
-                        rev_data = bytes.fromhex(payload_hex[2:])
-                        rm = OfferRevokeMessage(); rm.from_bytes(rev_data)
-                        oid = getattr(rm, "offer_msg_id", b"")
-                        sig = getattr(rm, "signature", b"")
-                        if isinstance(oid, (bytes, bytearray)) and oid:
-                            self.revoke_requests[oid.hex()] = (
-                                bytes(sig) if isinstance(sig, (bytes, bytearray)) else b""
-                            )
-                    except Exception:
-                        pass
-                    continue
-                if msg_type != MessageTypes.OFFER:
-                    continue
-                msg_data = bytes.fromhex(payload_hex[2:])
-                offer = OfferMessage()
-                offer.from_bytes(msg_data)
-                coin_from = getattr(offer, "coin_from", None)
-                coin_to = getattr(offer, "coin_to", None)
-                if coin_from is None or coin_to is None:
-                    continue
-                ticker_from = COIN_TICKERS.get(coin_from, f"?{coin_from}")
-                ticker_to = COIN_TICKERS.get(coin_to, f"?{coin_to}")
-                amount_from = getattr(offer, "amount_from", 0)
-                amount_to = getattr(offer, "amount_to", 0)
-                min_bid = getattr(offer, "min_bid_amount", 0)
-                # Proof address is a length-prefixed string field; decode to ascii if ascii-safe.
-                proof_addr_raw = getattr(offer, "proof_address", b"")
-                proof_addr = ""
-                if isinstance(proof_addr_raw, (bytes, bytearray)) and proof_addr_raw:
-                    try:
-                        proof_addr = proof_addr_raw.decode("ascii")
-                    except UnicodeDecodeError:
-                        proof_addr = proof_addr_raw.hex()
-                self.offers[msg_id] = {
-                    "msg_id": msg_id,
-                    "timestamp": result.get("sent", 0),
-                    "protocol_version": getattr(offer, "protocol_version", 0),
-                    "coin_from": ticker_from,
-                    "coin_to": ticker_to,
-                    "coin_from_id": coin_from,
-                    "coin_to_id": coin_to,
-                    "amount_from": amount_from,
-                    "amount_to": amount_to,
-                    "amount_from_str": format_amount(amount_from, coin_from),
-                    "amount_to_str": format_amount(amount_to, coin_to),
-                    "min_bid_amount": min_bid,
-                    "min_bid_amount_str": format_amount(min_bid, coin_from),
-                    "swap_type": getattr(offer, "swap_type", 0),
-                    "lock_type": getattr(offer, "lock_type", 0),
-                    "lock_value": getattr(offer, "lock_value", 0),
-                    "fee_rate_from": getattr(offer, "fee_rate_from", 0),
-                    "fee_rate_to": getattr(offer, "fee_rate_to", 0),
-                    "amount_negotiable": bool(getattr(offer, "amount_negotiable", 0)),
-                    "rate_negotiable": bool(getattr(offer, "rate_negotiable", 0)),
-                    "auto_accept_type": getattr(offer, "auto_accept_type", 0),
-                    "time_valid": getattr(offer, "time_valid", 0),
-                    "rate": amount_to / amount_from if amount_from > 0 else 0,
-                    "proof_address": proof_addr,
-                    "addr_from": result.get("addr_from", ""),
-                }
-                self.stats["offers_parsed"] += 1
-                log.info(f"  OFFER: {ticker_from}->{ticker_to} "
-                         f"amt={format_amount(amount_from, coin_from)} "
-                         f"id={msg_id[:16]}...")
-            except Exception:
-                self.stats["parse_errors"] += 1
+            with self._lock:
+                self.stats["msgs_decrypted"] += 1
+                try:
+                    self._ingest_decrypted(result, msg_id, seen_on=["smsg"])
+                except Exception:
+                    self.stats["parse_errors"] += 1
 
         log.info(f"  Processed batch: {self.stats['offers_parsed']} offers, "
                  f"{self.stats['msgs_decrypted']} decrypted, "
                  f"{self.stats['msgs_received']} total")
+
+    def ingest_smsg_bytes(self, smsg_msg: bytes, seen_on) -> bool:
+        """Decrypt one SMSG envelope and ingest it. Used by the Nostr path."""
+        if len(smsg_msg) < SMSG_HDR_LEN:
+            return False
+        msg_id = smsg_get_id(smsg_msg).hex()
+        with self._lock:
+            if msg_id in self.seen_msg_ids and seen_on == ["smsg"]:
+                return False
+            self.seen_msg_ids.add(msg_id)
+        try:
+            result = smsg_decrypt(self.network_privkey, smsg_msg)
+        except AssertionError:
+            with self._lock:
+                self.stats["not_for_us"] += 1
+                self.stats["decrypt_errors"] += 1
+            return False
+        except Exception:
+            with self._lock:
+                self.stats["parse_errors"] += 1
+                self.stats["decrypt_errors"] += 1
+            return False
+        with self._lock:
+            self.stats["msgs_decrypted"] += 1
+            try:
+                return self._ingest_decrypted(result, msg_id, seen_on=seen_on)
+            except Exception:
+                self.stats["parse_errors"] += 1
+                return False
+
+    def ingest_nostr_event(self, event: dict) -> bool:
+        from nostr_scrape import (
+            BSX_NOSTR_KIND, DEFAULT_NOSTR_TAG,
+            event_has_tag, event_tag_value, verify_event,
+        )
+        if event.get("kind") != BSX_NOSTR_KIND:
+            return False
+        if not event_has_tag(event, "t", DEFAULT_NOSTR_TAG):
+            return False
+        expiration = event_tag_value(event, "expiration")
+        if expiration is not None:
+            try:
+                if int(expiration) < time.time():
+                    return False
+            except ValueError:
+                return False
+        if not verify_event(event):
+            with self._lock:
+                self.stats["nostr_verify_fail"] = self.stats.get("nostr_verify_fail", 0) + 1
+            return False
+        try:
+            raw = base64.b64decode(event["content"], validate=False)
+        except Exception:
+            return False
+        if not self.ingest_smsg_bytes(raw, seen_on=["nostr"]):
+            return False
+        with self._lock:
+            self.stats["nostr_offers"] = self.stats.get("nostr_offers", 0) + 1
+        return True
+
+    def ingest_simplex_smsg(self, smsg_msg: bytes) -> bool:
+        if not self.ingest_smsg_bytes(smsg_msg, seen_on=["simplex"]):
+            return False
+        with self._lock:
+            self.stats["simplex_offers"] = self.stats.get("simplex_offers", 0) + 1
+        return True
+
+    def _ingest_decrypted(self, result: dict, msg_id: str, seen_on) -> bool:
+        payload_hex = result["hex"]
+        msg_type = int(payload_hex[:2], 16)
+        label = MESSAGE_TYPE_LABELS.get(msg_type, f"type_{msg_type}")
+        self.stats["message_type_counts"][label] = (
+            self.stats["message_type_counts"].get(label, 0) + 1
+        )
+        self.last_bsx_msg_ts = result.get("sent", self.last_bsx_msg_ts)
+        if msg_type == MessageTypes.BID:
+            try:
+                bid_data = bytes.fromhex(payload_hex[2:])
+                bm = BidMessage(); bm.from_bytes(bid_data)
+                oid = getattr(bm, "offer_msg_id", b"")
+                if isinstance(oid, (bytes, bytearray)) and oid:
+                    oid_hex = oid.hex()
+                    self.bid_counts[oid_hex] = self.bid_counts.get(oid_hex, 0) + 1
+                    self.bids_per_offer.setdefault(oid_hex, []).append({
+                        "amount": int(getattr(bm, "amount", 0) or 0),
+                        "amount_to": int(getattr(bm, "amount_to", 0) or 0),
+                        "rate": int(getattr(bm, "rate", 0) or 0),
+                        "time_valid": int(getattr(bm, "time_valid", 0) or 0),
+                        "sent": int(result.get("sent", 0) or 0),
+                    })
+            except Exception:
+                pass
+            return False
+        if msg_type == MessageTypes.OFFER_REVOKE:
+            self.stats["revokes_seen"] += 1
+            try:
+                rev_data = bytes.fromhex(payload_hex[2:])
+                rm = OfferRevokeMessage(); rm.from_bytes(rev_data)
+                oid = getattr(rm, "offer_msg_id", b"")
+                sig = getattr(rm, "signature", b"")
+                if isinstance(oid, (bytes, bytearray)) and oid:
+                    self.revoke_requests[oid.hex()] = (
+                        bytes(sig) if isinstance(sig, (bytes, bytearray)) else b""
+                    )
+            except Exception:
+                pass
+            return False
+        if msg_type != MessageTypes.OFFER:
+            return False
+        msg_data = bytes.fromhex(payload_hex[2:])
+        offer = OfferMessage()
+        offer.from_bytes(msg_data)
+        coin_from = getattr(offer, "coin_from", None)
+        coin_to = getattr(offer, "coin_to", None)
+        if coin_from is None or coin_to is None:
+            return False
+        ticker_from = COIN_TICKERS.get(coin_from, f"?{coin_from}")
+        ticker_to = COIN_TICKERS.get(coin_to, f"?{coin_to}")
+        amount_from = getattr(offer, "amount_from", 0)
+        amount_to = getattr(offer, "amount_to", 0)
+        min_bid = getattr(offer, "min_bid_amount", 0)
+        proof_addr_raw = getattr(offer, "proof_address", b"")
+        proof_addr = ""
+        if isinstance(proof_addr_raw, (bytes, bytearray)) and proof_addr_raw:
+            try:
+                proof_addr = proof_addr_raw.decode("ascii")
+            except UnicodeDecodeError:
+                proof_addr = proof_addr_raw.hex()
+        nets_raw = decode_message_nets_field(getattr(offer, "message_nets", b""))
+        offer_dict = {
+            "msg_id": msg_id,
+            "timestamp": result.get("sent", 0),
+            "protocol_version": getattr(offer, "protocol_version", 0),
+            "coin_from": ticker_from,
+            "coin_to": ticker_to,
+            "coin_from_id": coin_from,
+            "coin_to_id": coin_to,
+            "amount_from": amount_from,
+            "amount_to": amount_to,
+            "amount_from_str": format_amount(amount_from, coin_from),
+            "amount_to_str": format_amount(amount_to, coin_to),
+            "min_bid_amount": min_bid,
+            "min_bid_amount_str": format_amount(min_bid, coin_from),
+            "swap_type": getattr(offer, "swap_type", 0),
+            "lock_type": getattr(offer, "lock_type", 0),
+            "lock_value": getattr(offer, "lock_value", 0),
+            "fee_rate_from": getattr(offer, "fee_rate_from", 0),
+            "fee_rate_to": getattr(offer, "fee_rate_to", 0),
+            "amount_negotiable": bool(getattr(offer, "amount_negotiable", 0)),
+            "rate_negotiable": bool(getattr(offer, "rate_negotiable", 0)),
+            "auto_accept_type": getattr(offer, "auto_accept_type", 0),
+            "time_valid": getattr(offer, "time_valid", 0),
+            "rate": amount_to / amount_from if amount_from > 0 else 0,
+            "proof_address": proof_addr,
+            "addr_from": result.get("addr_from", ""),
+            "message_nets": nets_raw,
+            "networks": parse_message_nets(nets_raw),
+            "seen_on": list(seen_on),
+        }
+        existing = self.offers.get(msg_id)
+        if existing:
+            merged = list(existing.get("seen_on") or [])
+            new_net = False
+            for n in seen_on:
+                if n not in merged:
+                    merged.append(n)
+                    new_net = True
+            existing["seen_on"] = merged
+            if nets_raw and not existing.get("message_nets"):
+                existing["message_nets"] = nets_raw
+                existing["networks"] = parse_message_nets(nets_raw)
+            return new_net
+        self.offers[msg_id] = offer_dict
+        self.stats["offers_parsed"] += 1
+        via = "+".join(seen_on)
+        log.info(f"  OFFER [{via}]: {ticker_from}->{ticker_to} "
+                 f"amt={format_amount(amount_from, coin_from)} "
+                 f"id={msg_id[:16]}...")
+        return True
 
     def get_orderbook_dict(self, anonymize_makers: bool = False,
                            drop_expired: bool = False) -> dict:
@@ -819,6 +956,9 @@ class BSXOfferListener(P2PInterface):
             if drop_expired and (o.get("timestamp", 0) + o.get("time_valid", 0)) <= now:
                 continue
             o2 = dict(o)
+            o2["message_nets"] = o2.get("message_nets") or ""
+            o2["networks"] = parse_message_nets(o2["message_nets"])
+            o2["seen_on"] = normalize_seen_on(o2.get("seen_on"))
             # Attach observed bid count for this offer (defaults to 0 when no BIDs seen).
             bc, _ = lookup_by_offer_id(bid_counts, mid)
             o2["bid_count"] = bc or 0
@@ -1033,6 +1173,58 @@ def merge_previous_offers(listener, path: str) -> int:
     return merged
 
 
+def scrape_nostr(listener, relays, duration: int, since_s: int) -> None:
+    from nostr_scrape import (
+        DEFAULT_NOSTR_RELAYS, DEFAULT_NOSTR_SINCE_S,
+        collect_nostr_events, parse_relay_list,
+    )
+    urls = parse_relay_list(relays) if relays else list(DEFAULT_NOSTR_RELAYS)
+    lookback = since_s if since_s > 0 else DEFAULT_NOSTR_SINCE_S
+    since_ts = int(time.time()) - lookback
+    log.info(f"Nostr: scraping {len(urls)} relay(s) for {duration}s "
+             f"(since {lookback}s ago)")
+    events, ok_urls, fail_urls = collect_nostr_events(urls, duration, since_ts)
+    with listener._lock:
+        listener.stats["nostr_relays_ok"] = len(ok_urls)
+        listener.stats["nostr_relays_failed"] = len(fail_urls)
+        listener.stats["nostr_events"] = len(events)
+    ingested = 0
+    for event in events:
+        try:
+            if listener.ingest_nostr_event(event):
+                ingested += 1
+        except Exception:
+            continue
+    log.info(f"Nostr: {len(ok_urls)} relay(s) ok, {len(fail_urls)} failed, "
+             f"{len(events)} event(s), {ingested} new/merged offer(s)")
+
+
+def scrape_simplex(listener, ws_url, group_link, duration, client_path, data_dir,
+                   own_port=None):
+    from simplex_scrape import DEFAULT_OWN_PORT, collect_simplex_smsgs
+    blobs, meta = collect_simplex_smsgs(
+        ws_url=ws_url,
+        group_link=group_link,
+        duration=duration,
+        client_path=client_path,
+        data_dir=data_dir,
+        own_port=own_port or DEFAULT_OWN_PORT,
+    )
+    with listener._lock:
+        listener.stats["simplex_ok"] = 1 if meta.get("ok") else 0
+        listener.stats["simplex_messages"] = meta.get("messages", 0)
+        if meta.get("error"):
+            listener.stats["simplex_error"] = meta["error"]
+    ingested = 0
+    for raw in blobs:
+        try:
+            if listener.ingest_simplex_smsg(raw):
+                ingested += 1
+        except Exception:
+            continue
+    log.info(f"SimpleX: {len(blobs)} blob(s), {ingested} new/merged offer(s)")
+
+
 # ============================================================================
 # Main
 # ============================================================================
@@ -1076,6 +1268,31 @@ def main():
     parser.add_argument("--plain-dir",
                         help="If set, generate plain/stats.txt, summary.json, feed.xml, etc. "
                              "under this directory after a successful scrape")
+    parser.add_argument("--nostr", action="store_true", default=True,
+                        help="Also scrape BasicSwap offers from public Nostr relays (default)")
+    parser.add_argument("--no-nostr", dest="nostr", action="store_false",
+                        help="Skip the Nostr relay scrape")
+    parser.add_argument("--nostr-relays",
+                        help="Comma-separated Nostr relay URLs (default: damus, nos.lol, primal)")
+    parser.add_argument("--nostr-since", type=int, default=0,
+                        help="Look back this many seconds on relays (default: 48h)")
+    parser.add_argument("--simplex", action="store_true", default=True,
+                        help="Also scrape the SimpleX #bsx group (default; skipped if "
+                             "no client is reachable)")
+    parser.add_argument("--no-simplex", dest="simplex", action="store_false",
+                        help="Skip the SimpleX scrape")
+    parser.add_argument("--simplex-ws", default="ws://127.0.0.1:5225",
+                        help="simplex-chat WebSocket URL (default: ws://127.0.0.1:5225)")
+    parser.add_argument("--simplex-client",
+                        help="Path to simplex-chat if nothing is listening on --simplex-ws")
+    parser.add_argument("--simplex-data",
+                        help="Data dir when starting our own simplex-chat "
+                             "(default: ~/.cache/bsx_orderbook/simplex)")
+    parser.add_argument("--simplex-group-link",
+                        help="Group invite if this client is not already in #bsx")
+    parser.add_argument("--simplex-port", type=int, default=15225,
+                        help="Port for a scraper-owned simplex-chat (default: 15225, "
+                             "so it does not clash with a BasicSwap node on 5225)")
     args = parser.parse_args()
 
     if args.debug:
@@ -1119,31 +1336,50 @@ def main():
     # Connect
     net = NetworkThread()
     net.start()
+    store = BSXOfferListener(privkey)
+    for oid, ent in revoke_state.items():
+        try:
+            store.revoke_requests[oid] = bytes.fromhex(ent.get("sig", ""))
+        except Exception:
+            pass
     listener = None
     prev_listener = None
     peers_scraped = 0
     started_ts = int(time.time())
+    extra_threads = []
+    if args.nostr:
+        extra_threads.append(threading.Thread(
+            target=scrape_nostr,
+            args=(store, args.nostr_relays, args.duration, args.nostr_since),
+            daemon=True,
+        ))
+    if args.simplex:
+        from simplex_scrape import DEFAULT_GROUP_LINK
+        extra_threads.append(threading.Thread(
+            target=scrape_simplex,
+            args=(store, args.simplex_ws,
+                  args.simplex_group_link or DEFAULT_GROUP_LINK,
+                  args.duration, args.simplex_client, args.simplex_data,
+                  args.simplex_port),
+            daemon=True,
+        ))
+    for t in extra_threads:
+        t.start()
 
     try:
         for idx, (cand_ip, cand_port) in enumerate(candidates):
             log.info(f"[{idx + 1}/{len(candidates)}] Trying peer {cand_ip}:{cand_port}")
             listener = BSXOfferListener(privkey)
-            if prev_listener is not None:
-                # Carry accumulated state across peers so results merge and we
-                # don't re-request messages the previous peer already delivered.
-                listener.offers = prev_listener.offers
-                listener.seen_msg_ids = prev_listener.seen_msg_ids
-                listener.bid_counts = prev_listener.bid_counts
-                listener.bids_per_offer = prev_listener.bids_per_offer
-                listener.revoke_requests = prev_listener.revoke_requests
-                listener.stats = prev_listener.stats
-                listener.last_bsx_msg_ts = prev_listener.last_bsx_msg_ts
-            else:
-                for oid, ent in revoke_state.items():
-                    try:
-                        listener.revoke_requests[oid] = bytes.fromhex(ent.get("sig", ""))
-                    except Exception:
-                        pass
+            # Share the store so SMSG / Nostr / SimpleX mutate the same book.
+            src = prev_listener if prev_listener is not None else store
+            listener.offers = src.offers
+            listener.seen_msg_ids = src.seen_msg_ids
+            listener.bid_counts = src.bid_counts
+            listener.bids_per_offer = src.bids_per_offer
+            listener.revoke_requests = src.revoke_requests
+            listener.stats = src.stats
+            listener.last_bsx_msg_ts = src.last_bsx_msg_ts
+            listener._lock = src._lock
             listener.p2p_connected_to_node = True
             try:
                 listener.peer_connect(
@@ -1185,19 +1421,26 @@ def main():
             prev_listener = listener
 
         if peers_scraped == 0:
-            log.error(f"All {len(candidates)} peer(s) failed to connect")
-            return 1
+            log.warning(f"All {len(candidates)} peer(s) failed to connect")
 
     except KeyboardInterrupt:
         log.info("Interrupted")
     finally:
         net.close()
         time.sleep(0.5)
+        for t in extra_threads:
+            t.join(timeout=max(8, args.duration + 45))
 
-    if listener is None or peers_scraped == 0:
-        # Interrupted before any peer connected - nothing meaningful to publish.
+    if listener is None:
+        listener = store
+    else:
+        store.last_bsx_msg_ts = max(store.last_bsx_msg_ts, listener.last_bsx_msg_ts)
+        listener.last_bsx_msg_ts = store.last_bsx_msg_ts
+    if peers_scraped == 0 and not listener.offers:
         log.error("No data collected; skipping output")
         return 1
+    if peers_scraped == 0:
+        log.warning("No SMSG peers connected; publishing results from Nostr/SimpleX")
 
     # Carry still-active offers from the previous published snapshot, if requested.
     if args.merge_from:
@@ -1305,7 +1548,16 @@ def main():
                 "buckets_requested": listener.stats.get("buckets_requested", 0),
                 "wants_sent": listener.stats.get("wants_sent", 0),
                 "msg_rate_per_s": round(listener.stats.get("msgs_received", 0) / duration, 3),
-                "ok": listener.stats.get("msgs_received", 0) > 0,
+                "nostr_relays_ok": listener.stats.get("nostr_relays_ok", 0),
+                "nostr_relays_failed": listener.stats.get("nostr_relays_failed", 0),
+                "nostr_events": listener.stats.get("nostr_events", 0),
+                "nostr_offers": listener.stats.get("nostr_offers", 0),
+                "simplex_ok": listener.stats.get("simplex_ok", 0),
+                "simplex_messages": listener.stats.get("simplex_messages", 0),
+                "simplex_offers": listener.stats.get("simplex_offers", 0),
+                "ok": (listener.stats.get("msgs_received", 0) > 0
+                       or listener.stats.get("nostr_offers", 0) > 0
+                       or listener.stats.get("simplex_offers", 0) > 0),
             }
             write_json_atomic(args.health_file, health)
         except Exception as e:

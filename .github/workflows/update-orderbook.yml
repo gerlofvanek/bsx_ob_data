@@ -12,10 +12,13 @@ concurrency:
 permissions:
   contents: write
 
+env:
+  SIMPLEX_CHAT_VERSION: "7.0.0"
+
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -27,16 +30,34 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # Binary + #bsx membership live in Actions cache, not git (the client
+      # profile is a private key). Cache miss = download + join once.
+      - name: Cache SimpleX client
+        uses: actions/cache@v4
+        with:
+          path: .simplex-ci
+          key: simplex-${{ env.SIMPLEX_CHAT_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Ensure simplex-chat binary
+        run: python scripts/ensure_simplex.py --dest .simplex-ci/bin
+
       # --merge-from carries still-active offers from the last published snapshot
       # so a short scrape window doesn't drop offers the peer didn't re-announce.
       # --state-file persists signed revokes across runs (pruned after 7 days).
       # --idle-exit ends the listen window early once the peer goes quiet.
+      # --nostr also pulls kind-4859 / #t=bsx events from public relays.
+      # --simplex starts the cached client, joins #bsx, and tails group SMSGs.
       # --strict fails the job if no SMSG traffic arrived (dead peer / silent break).
-      - name: Fetch orderbook from Particl network
+      - name: Fetch orderbook from Particl / Nostr / SimpleX
         run: |
           python scraper.py --auto \
             --duration 30 \
             --idle-exit 8 \
+            --nostr \
+            --simplex \
+            --simplex-client .simplex-ci/bin/simplex-chat \
+            --simplex-data .simplex-ci/data \
+            --simplex-port 15225 \
             --merge-from orderbook.json \
             --state-file revoke_state.json \
             --health-file health.json \
@@ -44,6 +65,20 @@ jobs:
             --plain-dir plain \
             --strict \
             -o orderbook.json
+
+      - name: SimpleX scrape status
+        if: always()
+        run: |
+          test -f health.json || { echo "no health.json"; exit 0; }
+          python -c "
+          import json
+          h=json.load(open('health.json'))
+          print('simplex_ok', h.get('simplex_ok'))
+          print('simplex_messages', h.get('simplex_messages'))
+          print('simplex_offers', h.get('simplex_offers'))
+          print('nostr_offers', h.get('nostr_offers'))
+          print('msgs_received', h.get('msgs_received'))
+          "
 
       - name: Commit and push if changed
         run: |

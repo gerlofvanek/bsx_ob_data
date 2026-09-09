@@ -82,7 +82,9 @@ let CUR             = null;             // {base, quote} of the selected pair
 let pollTimer       = null;
 let identityQuery   = '';             // filter offers by msg_id or addr_from
 let offersScope     = 'pair';         // 'pair' | 'all'
+let networkFilter   = '';             // '' | 'smsg' | 'nostr' | 'simplex'
 const OFFERS_LIMIT  = { pair: 50, all: 100 };
+const NET_LABELS = { smsg: 'SMSG', nostr: 'Nostr', simplex: 'SimpleX' };
 
 /* ============================================================================
    FORMATTERS
@@ -135,6 +137,45 @@ function matchesIdentity(o, q){
   if(!q) return true;
   q = q.toLowerCase();
   return (o.msg_id||'').toLowerCase().includes(q) || (o.addr_from||'').toLowerCase().includes(q);
+}
+function offerFilterNets(o){
+  const advertised = (o.networks && o.networks.length) ? o.networks : [];
+  const seen = (o.seen_on && o.seen_on.length) ? o.seen_on : [];
+  const nets = [...new Set([...advertised, ...seen])];
+  return nets.length ? nets : ['smsg'];
+}
+function matchesNetwork(o, net){
+  if(!net) return true;
+  return offerFilterNets(o).includes(net);
+}
+function netChips(o){
+  const advertised = new Set((o.networks && o.networks.length) ? o.networks : []);
+  const seen = new Set((o.seen_on && o.seen_on.length) ? o.seen_on : []);
+  const nets = offerFilterNets(o);
+  return nets.map(n => {
+    const label = NET_LABELS[n] || n;
+    const onWire = seen.has(n);
+    const cls = onWire
+      ? 'bg-brand/15 text-brand'
+      : 'bg-slate-200 dark:bg-ink-700 text-slate-500 dark:text-slate-300';
+    const tip = onWire
+      ? `Seen on ${label} this scrape.`
+      : advertised.has(n)
+        ? `Maker advertised ${label} (not seen on that transport this scrape).`
+        : label;
+    return `<span class="px-1.5 py-0.5 rounded text-[10px] ${cls}" data-tippy-content="${tip}">${label}</span>`;
+  }).join('');
+}
+function setNetworkFilter(net){
+  networkFilter = (net === 'smsg' || net === 'nostr' || net === 'simplex') ? net : '';
+  const on = 'px-2 py-1 rounded-md bg-white dark:bg-ink-600 shadow-sm';
+  const off = 'px-2 py-1 rounded-md text-slate-500 dark:text-slate-400';
+  document.querySelectorAll('.net-filter').forEach(b => {
+    b.className = 'net-filter ' + ((b.dataset.net || '') === networkFilter ? on : off);
+  });
+  try{ localStorage.setItem('bsx-mkts-net-filter', networkFilter); } catch(e){}
+  renderOffers();
+  refreshTips();
 }
 function makerColor(addr){
   if(!addr) return null;
@@ -662,7 +703,7 @@ function renderOffers(){
   }
 
   const q = identityQuery.trim();
-  let rows = q ? pool.filter(o => matchesIdentity(o, q)) : pool.slice();
+  let rows = pool.filter(o => matchesIdentity(o, q) && matchesNetwork(o, networkFilter));
   if(showAll) rows.sort((a, b) => offerUsdSize(b) - offerUsdSize(a));
 
   const pairRefRate = (!showAll && CUR) ? (function(){
@@ -674,15 +715,17 @@ function renderOffers(){
   })() : null;
 
   const countEl = document.getElementById('offers-count');
+  const filtered = !!(q || networkFilter);
   if(countEl){
     const scope = showAll ? 'all listings' : 'this pair';
+    const netBit = networkFilter ? ` · ${NET_LABELS[networkFilter]||networkFilter}` : '';
     if(!pool.length) countEl.textContent = '· none live';
     else if(rows.length > limit)
-      countEl.textContent = `· showing ${limit} of ${rows.length}${q ? ' (filtered)' : ''} · ${scope}`;
-    else if(q && rows.length !== pool.length)
-      countEl.textContent = `· showing ${rows.length} of ${pool.length} (filtered) · ${scope}`;
-    else if(q)
-      countEl.textContent = `· showing ${rows.length} (filtered) · ${scope}`;
+      countEl.textContent = `· showing ${limit} of ${rows.length}${filtered ? ' (filtered)' : ''} · ${scope}${netBit}`;
+    else if(filtered && rows.length !== pool.length)
+      countEl.textContent = `· showing ${rows.length} of ${pool.length} (filtered) · ${scope}${netBit}`;
+    else if(filtered)
+      countEl.textContent = `· showing ${rows.length} (filtered) · ${scope}${netBit}`;
     else
       countEl.textContent = `· showing ${rows.length} · ${scope}`;
   }
@@ -690,7 +733,9 @@ function renderOffers(){
   const now = Math.floor(Date.now()/1000);
   const emptyMsg = q
     ? `No offers match “${escAttr(q)}”${showAll ? '' : ' for this pair'}.`
-    : (showAll ? 'No live offers across the network.' : 'No live offers for this pair.');
+    : (networkFilter
+      ? `No live ${(NET_LABELS[networkFilter]||networkFilter)} offers${showAll ? '' : ' for this pair'}.`
+      : (showAll ? 'No live offers across the network.' : 'No live offers for this pair.'));
 
   document.getElementById('offers-body').innerHTML = rows.slice(0, limit).map(o=>{
     const fa = parseFloat(o.amount_from_str)||0, ta = parseFloat(o.amount_to_str)||0;
@@ -751,7 +796,7 @@ function renderOffers(){
       <td class="py-2 text-right text-slate-400">${expS>0?f.ageShort(expS):'expired'}</td>
     </tr>
     <tr class="border-b border-slate-100 dark:border-ink-700/60"><td colspan="${cols}" class="pb-2 pl-0">
-      <span class="inline-flex gap-1 flex-wrap">${tag(typeLabel,'bg-brand/15 text-brand')}${flags.map(fl=>tag(fl,'bg-slate-200 dark:bg-ink-700 text-slate-500 dark:text-slate-300')).join('')}${bidChip(o)}</span>
+      <span class="inline-flex gap-1 flex-wrap">${tag(typeLabel,'bg-brand/15 text-brand')}${netChips(o)}${flags.map(fl=>tag(fl,'bg-slate-200 dark:bg-ink-700 text-slate-500 dark:text-slate-300')).join('')}${bidChip(o)}</span>
     </td></tr>`;
   }).join('') || `<tr><td colspan="${cols}" class="py-8 text-center text-slate-400 text-sm">${emptyMsg}</td></tr>`;
 }
@@ -911,6 +956,11 @@ function renderAdvanced(){
     {k:'Orphan revokes',   v: f.int(s.revokes_orphan||0), tip:'Revoke messages whose offer was never seen this run — usually the offer already expired out of the SMSG buckets. Harmless.'},
     {k:'Median spread',    v: medianSpread!=null ? medianSpread.toFixed(2)+'%' : '—', tip:'Liquidity-weighted median spread across active two-sided pairs.'},
     {k:'Scraper run',      v: h.duration_s!=null ? h.duration_s+'s' : '—', tip:'Wall time of the most recent scraper run (lower is better).'},
+    {k:'Nostr events',     v: f.int(s.nostr_events||0), tip:'Verified BasicSwap kind-4859 events pulled from public Nostr relays this run.'},
+    {k:'Nostr offers',     v: f.int(s.nostr_offers||0), tip:'Offers first seen or newly attributed to Nostr this run. Same msg_id as SMSG when the maker published on both.'},
+    {k:'Nostr relays',     v: (s.nostr_relays_ok||0)+'/'+((s.nostr_relays_ok||0)+(s.nostr_relays_failed||0) || '—'), tip:'Relays that completed a subscribe this scrape vs attempted.'},
+    {k:'SimpleX msgs',     v: f.int(s.simplex_messages||0), tip:'Base64 SMSG blobs pulled from the SimpleX #bsx group this run.'},
+    {k:'SimpleX offers',   v: f.int(s.simplex_offers||0), tip:'Offers first seen or newly attributed to SimpleX this run.'},
   ];
   document.getElementById('adv-body').innerHTML = fields.map(a=>`
     <div class="rounded-xl bg-slate-50 dark:bg-ink-700/50 p-3">
@@ -1043,6 +1093,11 @@ function wire(){
   }
   document.getElementById('offers-scope-pair')?.addEventListener('click', ()=> setOffersScope('pair'));
   document.getElementById('offers-scope-all')?.addEventListener('click', ()=> setOffersScope('all'));
+  document.getElementById('offers-net-filter')?.addEventListener('click', e=>{
+    const btn = e.target.closest('.net-filter');
+    if(!btn) return;
+    setNetworkFilter(btn.dataset.net || '');
+  });
   document.getElementById('offers-body')?.addEventListener('click', e=>{
     const pairBtn = e.target.closest('.offers-pick-pair');
     if(pairBtn){
@@ -1090,8 +1145,10 @@ function wire(){
 (async function init(){
   try{ const u = localStorage.getItem('bsx-mkts-unit'); if(u==='usd'||u==='coin') unit = u; } catch(e){}
   try{ const s = localStorage.getItem('bsx-mkts-offers-scope'); if(s==='all'||s==='pair') offersScope = s; } catch(e){}
+  try{ const n = localStorage.getItem('bsx-mkts-net-filter'); if(n==='smsg'||n==='nostr'||n==='simplex') networkFilter = n; } catch(e){}
   wire();
   setOffersScope(offersScope);
+  setNetworkFilter(networkFilter);
   loadCachedPrices();
   await Promise.all([fetchPrices(), fetchSnapshotManifest(), fetchHealth()]);
   await fetchOrderbook();
