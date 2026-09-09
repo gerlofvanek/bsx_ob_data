@@ -38,6 +38,43 @@ KNOWN_MAKERS = {
     "PgTfpGmwtXppGVrNUAdJicKAVErZBEK2xo": "WizardSwap",
 }
 
+KNOWN_MESSAGE_NETS = ("smsg", "nostr", "simplex")
+NET_LABELS = {"smsg": "SMSG", "nostr": "Nostr", "simplex": "SimpleX"}
+
+
+def offer_nets(o: dict) -> list[str]:
+    advertised = o.get("networks") if isinstance(o.get("networks"), list) else []
+    seen = o.get("seen_on") if isinstance(o.get("seen_on"), list) else []
+    out: list[str] = []
+    for n in list(advertised) + list(seen):
+        if isinstance(n, str) and n in KNOWN_MESSAGE_NETS and n not in out:
+            out.append(n)
+    return out or ["smsg"]
+
+
+def format_offer_nets(o: dict) -> str:
+    seen = o.get("seen_on") if isinstance(o.get("seen_on"), list) else []
+    seen_set = {n for n in seen if n in KNOWN_MESSAGE_NETS}
+    parts = []
+    for n in offer_nets(o):
+        label = NET_LABELS.get(n, n)
+        parts.append(label if (n in seen_set or not seen_set) else f"({label})")
+    return " ".join(parts)
+
+
+def count_offers_by_seen(offers: list[dict]) -> dict[str, int]:
+    counts = {n: 0 for n in KNOWN_MESSAGE_NETS}
+    for o in offers:
+        seen = o.get("seen_on") if isinstance(o.get("seen_on"), list) and o.get("seen_on") else ["smsg"]
+        for n in seen:
+            if n in counts:
+                counts[n] += 1
+    return counts
+
+
+def format_net_counts(counts: dict[str, int]) -> str:
+    return " · ".join(f"{NET_LABELS[n]} {counts.get(n, 0)}" for n in KNOWN_MESSAGE_NETS)
+
 
 def pair_key(a: str, b: str) -> str:
     return f"{a}/{b}" if a < b else f"{b}/{a}"
@@ -552,6 +589,7 @@ def render_pair_txt(
         "",
         f"liquidity   {fiat_compact(liq)}",
         f"live offers {len(pair_offers)}",
+        f"nets        {format_net_counts(count_offers_by_seen(pair_offers))}",
     ]
     if sp is not None:
         lines.append(f"spread      {spread_word(sp)} · {sp:.2f}%")
@@ -587,6 +625,7 @@ def render_now_section(book: dict, offers: list[dict], prices: dict[str, float],
         f"live offers       {int_fmt(len(offers))}" + (f"  ({live_delta:+.1f}% vs 24h)" if live_delta else ""),
         f"new offers · 24h   {int_fmt(newest)}",
         f"snapshot age      {age_short(age_s)}",
+        f"live by net       {format_net_counts(count_offers_by_seen(offers))}",
     ]
     return "\n".join(lines)
 
@@ -728,8 +767,10 @@ def build_ops_data(
         bump(3, "critical", f"Invalid revokes: {invalid} — possible censorship attempt")
 
     msgs = int(h.get("msgs_received") or stats.get("msgs_received") or 0)
-    if h.get("ok") is False or msgs == 0:
-        bump(3, "critical", "Scrape failed or zero SMSG traffic")
+    nostr_n = int(h.get("nostr_offers") or 0)
+    simplex_n = int(h.get("simplex_offers") or 0)
+    if h.get("ok") is False or (msgs == 0 and nostr_n == 0 and simplex_n == 0):
+        bump(3, "critical", "Scrape failed or zero SMSG / Nostr / SimpleX traffic")
 
     ts = int(book.get("timestamp") or now)
     age_s = max(0, now - ts)
@@ -832,6 +873,10 @@ def build_status(health: dict | None, book: dict) -> str:
     if rate is not None:
         parts.append(f"{rate:.1f} msg/s")
     parts.append(f"{msgs} SMSGs")
+    if h.get("nostr_offers") not in (None, 0):
+        parts.append(f"{h['nostr_offers']} nostr")
+    if h.get("simplex_offers") not in (None, 0):
+        parts.append(f"{h['simplex_offers']} simplex")
     parts.append(f"{parsed} parsed")
     parts.append(f"{len(live_offers(book))} live offers")
     return " · ".join(str(p) for p in parts)
@@ -909,7 +954,7 @@ def build_stats_txt(book: dict, offers: list[dict], prices: dict[str, float], ma
     sections = [
         "plain text market stats",
         "",
-        f"BasicSwap · Particl SMSG network",
+        f"BasicSwap · SMSG · Nostr · SimpleX",
         updated,
         "",
         "=" * w,

@@ -34,6 +34,9 @@ const BAR_W = 12;
 const SPARK_W = 8;
 const RULE_MIN = 45;
 
+const NET_LABELS = { smsg: 'SMSG', nostr: 'Nostr', simplex: 'SimpleX' };
+const NET_ORDER = ['smsg', 'nostr', 'simplex'];
+
 const XMR_DONATE = '85QDdyVftCW9zvwiVcR19eG4LhCejpRcM45yQHGLPKnxGs9p2iu5RxEB4C2KXRDFoZFL742gpiUKfGTA1ge1v8cMQRRUbW6';
 
 const ASCII_LOGO = [
@@ -177,6 +180,30 @@ function isExpired(o) {
   return (o.timestamp + (o.time_valid || 0)) <= Math.floor(Date.now() / 1000);
 }
 function liveOffers() { return allOffers.filter(o => !isExpired(o)); }
+function offerNets(o) {
+  const advertised = (o.networks && o.networks.length) ? o.networks : [];
+  const seen = (o.seen_on && o.seen_on.length) ? o.seen_on : [];
+  const nets = [...new Set([...advertised, ...seen])].filter(n => NET_LABELS[n]);
+  return nets.length ? nets : ['smsg'];
+}
+function formatOfferNets(o) {
+  const seen = new Set((o.seen_on && o.seen_on.length) ? o.seen_on : []);
+  return offerNets(o).map(n => {
+    const label = NET_LABELS[n] || n;
+    return (seen.has(n) || !seen.size) ? label : '(' + label + ')';
+  }).join(' ');
+}
+function countLiveBySeen(offers) {
+  const counts = { smsg: 0, nostr: 0, simplex: 0 };
+  (offers || liveOffers()).forEach(o => {
+    const seen = (o.seen_on && o.seen_on.length) ? o.seen_on : ['smsg'];
+    seen.forEach(n => { if (counts[n] != null) counts[n] += 1; });
+  });
+  return counts;
+}
+function formatNetCounts(counts) {
+  return NET_ORDER.map(n => (NET_LABELS[n] || n) + ' ' + f.int(counts[n] || 0)).join(' · ');
+}
 
 function spreadWord(p) {
   if (!isFinite(p) || p < 0) return '—';
@@ -389,14 +416,15 @@ function renderAllListingsSection(limit) {
       f.coin(parseFloat(o.amount_to_str) || 0) + ' ' + o.coin_to,
       f.coin(parseFloat(o.amount_from_str) || 0) + ' ' + o.coin_from,
       f.fiatCompact(usd),
+      formatOfferNets(o),
       knownMakerLabel(o.addr_from),
       offerExpiresIn(o),
     ];
   });
   let text = asciiTable(
-    ['Pair', 'Pay', 'Get', 'USD', 'Maker', 'Left'],
+    ['Pair', 'Pay', 'Get', 'USD', 'Nets', 'Maker', 'Left'],
     textRows,
-    ['l', 'r', 'r', 'r', 'l', 'r']
+    ['l', 'r', 'r', 'r', 'l', 'l', 'r']
   );
   text += '\n\n' + shown.length + ' of ' + offers.length + ' live offers';
   if (offers.length > limit) text += ' · show more on page';
@@ -410,13 +438,14 @@ function renderAllListingsSection(limit) {
       + '<td class="num">' + esc(pay) + '</td>'
       + '<td class="num">' + esc(get) + '</td>'
       + '<td class="num">' + esc(f.fiatCompact(offerUsdSize(o))) + '</td>'
+      + '<td>' + esc(formatOfferNets(o)) + '</td>'
       + '<td class="maker-cell">' + makerCellHtml(o.addr_from) + '</td>'
       + '<td class="num">' + esc(offerExpiresIn(o)) + '</td>'
       + '</tr>';
   }).join('');
 
   const html = '<table class="data-table listings-table"><thead><tr>'
-    + '<th>Pair</th><th>Pay</th><th>Get</th><th>USD</th><th>Maker</th><th>Left</th>'
+    + '<th>Pair</th><th>Pay</th><th>Get</th><th>USD</th><th>Nets</th><th>Maker</th><th>Left</th>'
     + '</tr></thead><tbody>' + htmlRows + '</tbody></table>'
     + '<p class="table-foot muted">' + esc(shown.length + ' of ' + offers.length + ' live offers') + '</p>';
 
@@ -536,10 +565,10 @@ function updatePageMeta(pairParam, detail) {
     alt.title = t + ' plain text';
   } else {
     const title = 'BasicSwap · plain text market stats';
-    const overviewDesc = 'Plain text BasicSwap DEX market stats — liquidity, pairs, makers and order book from the Particl SMSG network.';
+    const overviewDesc = 'Plain text BasicSwap DEX market stats — liquidity, pairs, makers and order book from SMSG, Nostr and SimpleX.';
     if (desc) desc.content = overviewDesc;
     if (ogTitle) ogTitle.content = title;
-    if (ogDesc) ogDesc.content = 'Live liquidity, pairs, makers and order book from the Particl SMSG network.';
+    if (ogDesc) ogDesc.content = 'Live liquidity, pairs, makers and order book from SMSG, Nostr and SimpleX.';
     setMeta('property', 'og:url', base);
     setMeta('property', 'og:image', ogImage);
     setMeta('name', 'twitter:card', 'summary');
@@ -1009,9 +1038,14 @@ function renderPairDetail(base, quote) {
     const share = totalLiq ? Math.round(liq / totalLiq * 100) : 0;
     stats.push(kv('rank', '#' + rank + ' · ' + share + '% of network'));
   }
+  const pairOffers = liveOffers().filter(o =>
+    (o.coin_from === base && o.coin_to === quote) ||
+    (o.coin_from === quote && o.coin_to === base)
+  );
   stats.push(
     kv('liquidity', f.fiatCompact(liq)),
     kv('live offers', f.int(count)),
+    kv('nets', formatNetCounts(countLiveBySeen(pairOffers))),
   );
 
   const delta = pairDelta24h(base, quote, count);
@@ -1056,8 +1090,22 @@ function renderNetwork() {
   const foreign = (typeof msgsIn === 'number' && typeof st.msgs_decrypted === 'number')
     ? msgsIn - st.msgs_decrypted : '—';
 
+  const nostrLine = [
+    h.nostr_events != null ? f.int(h.nostr_events) + ' events' : null,
+    h.nostr_offers != null ? f.int(h.nostr_offers) + ' offers' : null,
+    h.nostr_relays_ok != null ? f.int(h.nostr_relays_ok) + ' relays' : null,
+  ].filter(Boolean).join(' · ') || '—';
+  const simplexLine = [
+    h.simplex_ok === true ? 'ok' : (h.simplex_ok === false ? 'down' : null),
+    h.simplex_messages != null ? f.int(h.simplex_messages) + ' msgs' : null,
+    h.simplex_offers != null ? f.int(h.simplex_offers) + ' offers' : null,
+  ].filter(Boolean).join(' · ') || '—';
+
   const lines = [
     kv('SMSGs in', f.int(msgsIn)),
+    kv('Nostr', nostrLine),
+    kv('SimpleX', simplexLine),
+    kv('live by net', formatNetCounts(countLiveBySeen())),
     kv('BSX messages', f.int(bsxMsgs)),
     kv('foreign SMSGs', typeof foreign === 'number' ? f.int(foreign) : foreign),
     kv('scrape duration', h.duration_s != null ? h.duration_s + 's' : '—'),
@@ -1137,7 +1185,7 @@ function renderPage() {
   const relatedBlock = pairParam && detail ? renderRelatedPairs(pairParam.base, pairParam.quote) : { text: '', html: '' };
   const networkText = renderNetwork();
   const footerLine = 'market data last fetched at: ' + updated + ' (' + age + ' ago)';
-  const headlineLine = 'BasicSwap · Particl SMSG network  ' + dateStr;
+  const headlineLine = 'BasicSwap · SMSG · Nostr · SimpleX  ' + dateStr;
   const pairSectionLabel = pairParam ? pairParam.base + ' / ' + pairParam.quote : '';
   const watchNote = watchlist.length
     ? watchlist.map(w => w.base + '/' + w.quote).join(', ')
@@ -1172,7 +1220,7 @@ function renderPage() {
   html += '<pre class="logo' + (isSkynetMode() ? ' skynet-logo' : '') + '" aria-hidden="true">'
     + esc(ASCII_LOGO) + '</pre>\n';
   html += '<p class="tagline">' + esc(isSkynetMode() ? 'MARKET INTELLIGENCE · PLAIN MODE' : 'plain text market stats') + '</p>\n';
-  html += '<p class="headline">' + esc(isSkynetMode() ? 'PARTSMSG MESH' : 'BasicSwap · Particl SMSG network')
+  html += '<p class="headline">' + esc(isSkynetMode() ? 'PARTSMSG MESH' : 'BasicSwap · SMSG · Nostr · SimpleX')
     + '<br>' + esc(dateStr) + '</p>\n';
   html += '<p class="nav-top"><a href="../">full markets view</a> · ' + themeToggleHtml() + '</p>\n';
 

@@ -137,6 +137,16 @@ function renderScrapeSection(ops, health, now) {
     kv('peers', intFmt(h.peers_scraped)),
     kv('msg rate', h.msg_rate_per_s != null ? h.msg_rate_per_s + '/s' : '—'),
     kv('SMSG in', intFmt(h.msgs_received)),
+    kv('Nostr', [
+      h.nostr_events != null ? intFmt(h.nostr_events) + ' events' : null,
+      h.nostr_offers != null ? intFmt(h.nostr_offers) + ' offers' : null,
+      h.nostr_relays_ok != null ? intFmt(h.nostr_relays_ok) + ' relays' : null,
+    ].filter(Boolean).join(' · ') || '—'),
+    kv('SimpleX', [
+      h.simplex_ok === true ? 'ok' : (h.simplex_ok === false ? 'down' : null),
+      h.simplex_messages != null ? intFmt(h.simplex_messages) + ' msgs' : null,
+      h.simplex_offers != null ? intFmt(h.simplex_offers) + ' offers' : null,
+    ].filter(Boolean).join(' · ') || '—'),
     kv('decrypted', intFmt(h.msgs_decrypted)),
     kv('parsed', intFmt(h.offers_parsed)),
     kv('merged', intFmt(h.offers_merged_from_previous)),

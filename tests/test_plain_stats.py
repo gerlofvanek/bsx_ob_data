@@ -29,6 +29,22 @@ def test_build_stats_txt_contains_sections(book):
     assert "Offer freshness" in text
 
 
+def test_offer_nets_and_counts():
+    seen_both = {"networks": ["smsg", "nostr"], "seen_on": ["nostr"]}
+    assert plain_stats.offer_nets(seen_both) == ["smsg", "nostr"]
+    assert plain_stats.format_offer_nets(seen_both) == "(SMSG) Nostr"
+    legacy = {"coin_from": "BTC"}
+    assert plain_stats.offer_nets(legacy) == ["smsg"]
+    assert plain_stats.format_offer_nets(legacy) == "SMSG"
+    counts = plain_stats.count_offers_by_seen([
+        {"seen_on": ["smsg", "nostr"]},
+        {"seen_on": ["simplex"]},
+        {},
+    ])
+    assert counts == {"smsg": 2, "nostr": 1, "simplex": 1}
+    assert "SMSG 2" in plain_stats.format_net_counts(counts)
+
+
 def test_build_summary_includes_prices(book):
     offers = plain_stats.live_offers(book)
     summary = plain_stats.build_summary(book, offers, {"bitcoin": 100000.0})
@@ -99,7 +115,7 @@ def test_stats_txt_golden_structure(book):
     text = plain_stats.build_stats_txt(book, offers, {}, [], now)
     lines = text.splitlines()
     assert lines[0] == "plain text market stats"
-    assert "BasicSwap · Particl SMSG network" in text
+    assert "BasicSwap · SMSG · Nostr · SimpleX" in text
     section_order = ["Now", "Top pairs", "Liquidity by coin", "Offer freshness", "New offers · 24h", "Makers"]
     positions = [text.index(s) for s in section_order]
     assert positions == sorted(positions)
