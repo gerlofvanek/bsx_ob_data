@@ -1309,7 +1309,7 @@ def main():
     parser.add_argument("--no-nostr", dest="nostr", action="store_false",
                         help="Skip the Nostr relay scrape")
     parser.add_argument("--nostr-relays",
-                        help="Comma-separated Nostr relay URLs (default: damus, nos.lol, primal)")
+                        help="Comma-separated Nostr relay URLs (default: primal, nos.lol, damus, momostr, nostr.mom)")
     parser.add_argument("--nostr-since", type=int, default=0,
                         help="Look back this many seconds on relays (default: 48h)")
     parser.add_argument("--simplex", action="store_true", default=True,

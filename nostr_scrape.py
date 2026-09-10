@@ -24,9 +24,11 @@ log = logging.getLogger("BSXScraper")
 BSX_NOSTR_KIND = 4859
 DEFAULT_NOSTR_TAG = "bsx"
 DEFAULT_NOSTR_RELAYS = (
-    "wss://relay.damus.io",
-    "wss://nos.lol",
     "wss://relay.primal.net",
+    "wss://nos.lol",
+    "wss://relay.damus.io",
+    "wss://relay.momostr.pink",
+    "wss://nostr.mom",
 )
 DEFAULT_NOSTR_SINCE_S = 48 * 3600
 _WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
