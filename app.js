@@ -83,6 +83,7 @@ let pollTimer       = null;
 let identityQuery   = '';             // filter offers by msg_id or addr_from
 let offersScope     = 'pair';         // 'pair' | 'all'
 let networkFilter   = '';             // '' | 'smsg' | 'nostr' | 'simplex'
+let coinFilter      = [];             // 0–2 tickers, e.g. ['BCH'] or ['BCH','XMR']
 const OFFERS_LIMIT  = { pair: 50, all: 100 };
 const NET_LABELS = { smsg: 'SMSG', nostr: 'Nostr', simplex: 'SimpleX' };
 
@@ -143,7 +144,71 @@ function escAttr(s){ return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&q
 function matchesIdentity(o, q){
   if(!q) return true;
   q = q.toLowerCase();
-  return (o.msg_id||'').toLowerCase().includes(q) || (o.addr_from||'').toLowerCase().includes(q);
+  if((o.msg_id||'').toLowerCase().includes(q) || (o.addr_from||'').toLowerCase().includes(q)) return true;
+  const cf = (o.coin_from||'').toLowerCase();
+  const ct = (o.coin_to||'').toLowerCase();
+  const compact = q.replace(/\s+/g,'').replace('-','/');
+  if(compact === cf || compact === ct) return true;
+  if(compact === cf+'/'+ct || compact === ct+'/'+cf) return true;
+  return false;
+}
+function liveCoins(){
+  const s = new Set();
+  liveOffers().forEach(o=>{
+    if(o.coin_from) s.add(o.coin_from);
+    if(o.coin_to) s.add(o.coin_to);
+  });
+  return [...s].sort();
+}
+function matchesCoins(o, coins){
+  if(!coins || !coins.length) return true;
+  const sides = [o.coin_from, o.coin_to];
+  if(coins.length === 1) return sides.includes(coins[0]);
+  return sides.includes(coins[0]) && sides.includes(coins[1]);
+}
+function coinFilterLabel(){
+  if(coinFilter.length === 2) return coinFilter[0]+'/'+coinFilter[1];
+  if(coinFilter.length === 1) return coinFilter[0];
+  return '';
+}
+function renderCoinFilter(){
+  const wrap = document.getElementById('offers-coin-filter');
+  if(!wrap) return;
+  const on = 'coin-filter px-2 py-1 rounded-md bg-white dark:bg-ink-600 shadow-sm';
+  const off = 'coin-filter px-2 py-1 rounded-md text-slate-500 dark:text-slate-400';
+  const coins = liveCoins();
+  let html = `<button type="button" data-coin="" class="${coinFilter.length ? off : on}">All coins</button>`;
+  coins.forEach(c=>{
+    html += `<button type="button" data-coin="${escAttr(c)}" class="${coinFilter.includes(c) ? on : off}">${escAttr(c)}</button>`;
+  });
+  wrap.innerHTML = html;
+}
+function applyCoinFilter(){
+  try{ localStorage.setItem('bsx-mkts-coin-filter', JSON.stringify(coinFilter)); } catch(e){}
+  renderCoinFilter();
+  if(coinFilter.length === 1 && offersScope === 'pair' && CUR
+      && CUR.base !== coinFilter[0] && CUR.quote !== coinFilter[0]){
+    setOffersScope('all');
+    return;
+  }
+  if(coinFilter.length === 2){
+    selectPair(coinFilter[0], coinFilter[1]);
+    return;
+  }
+  renderOffers();
+  refreshTips();
+}
+function toggleCoinFilter(ticker){
+  if(!ticker){
+    coinFilter = [];
+  } else if(coinFilter.includes(ticker)){
+    coinFilter = coinFilter.filter(c => c !== ticker);
+  } else if(coinFilter.length >= 2){
+    coinFilter = [ticker];
+  } else {
+    coinFilter = coinFilter.concat(ticker);
+  }
+  applyCoinFilter();
 }
 function offerFilterNets(o){
   const advertised = (o.networks && o.networks.length) ? o.networks : [];
@@ -710,7 +775,7 @@ function renderOffers(){
   }
 
   const q = identityQuery.trim();
-  let rows = pool.filter(o => matchesIdentity(o, q) && matchesNetwork(o, networkFilter));
+  let rows = pool.filter(o => matchesIdentity(o, q) && matchesNetwork(o, networkFilter) && matchesCoins(o, coinFilter));
   if(showAll) rows.sort((a, b) => offerUsdSize(b) - offerUsdSize(a));
 
   const pairRefRate = (!showAll && CUR) ? (function(){
@@ -722,17 +787,18 @@ function renderOffers(){
   })() : null;
 
   const countEl = document.getElementById('offers-count');
-  const filtered = !!(q || networkFilter);
+  const coinBit = coinFilterLabel() ? ` · ${coinFilterLabel()}` : '';
+  const filtered = !!(q || networkFilter || coinFilter.length);
   if(countEl){
     const scope = showAll ? 'all listings' : 'this pair';
     const netBit = networkFilter ? ` · ${NET_LABELS[networkFilter]||networkFilter}` : '';
     if(!pool.length) countEl.textContent = '· none live';
     else if(rows.length > limit)
-      countEl.textContent = `· showing ${limit} of ${rows.length}${filtered ? ' (filtered)' : ''} · ${scope}${netBit}`;
+      countEl.textContent = `· showing ${limit} of ${rows.length}${filtered ? ' (filtered)' : ''} · ${scope}${netBit}${coinBit}`;
     else if(filtered && rows.length !== pool.length)
-      countEl.textContent = `· showing ${rows.length} of ${pool.length} (filtered) · ${scope}${netBit}`;
+      countEl.textContent = `· showing ${rows.length} of ${pool.length} (filtered) · ${scope}${netBit}${coinBit}`;
     else if(filtered)
-      countEl.textContent = `· showing ${rows.length} (filtered) · ${scope}${netBit}`;
+      countEl.textContent = `· showing ${rows.length} (filtered) · ${scope}${netBit}${coinBit}`;
     else
       countEl.textContent = `· showing ${rows.length} · ${scope}`;
   }
@@ -740,9 +806,11 @@ function renderOffers(){
   const now = Math.floor(Date.now()/1000);
   const emptyMsg = q
     ? `No offers match “${escAttr(q)}”${showAll ? '' : ' for this pair'}.`
-    : (networkFilter
-      ? `No live ${(NET_LABELS[networkFilter]||networkFilter)} offers${showAll ? '' : ' for this pair'}.`
-      : (showAll ? 'No live offers across the network.' : 'No live offers for this pair.'));
+    : (coinFilter.length
+      ? `No live ${escAttr(coinFilterLabel())} offers${showAll ? '' : ' for this pair'}.`
+      : (networkFilter
+        ? `No live ${(NET_LABELS[networkFilter]||networkFilter)} offers${showAll ? '' : ' for this pair'}.`
+        : (showAll ? 'No live offers across the network.' : 'No live offers for this pair.')));
 
   document.getElementById('offers-body').innerHTML = rows.slice(0, limit).map(o=>{
     const fa = parseFloat(o.amount_from_str)||0, ta = parseFloat(o.amount_to_str)||0;
@@ -1051,9 +1119,11 @@ function renderAll(){
   renderHeatmap();
   renderTickers();
   renderAdvanced();
+  renderCoinFilter();
   // Re-select the same pair if it still exists; otherwise pick the deepest one.
-  let next = CUR;
-  if(next){
+  // A two-coin filter wins so BCH+XMR stays on that pair after refresh.
+  let next = (coinFilter.length === 2) ? { base: coinFilter[0], quote: coinFilter[1] } : CUR;
+  if(next && coinFilter.length !== 2){
     const still = liveOffers().some(o =>
       (o.coin_from===next.base && o.coin_to===next.quote) ||
       (o.coin_from===next.quote && o.coin_to===next.base)
@@ -1105,6 +1175,11 @@ function wire(){
     if(!btn) return;
     setNetworkFilter(btn.dataset.net || '');
   });
+  document.getElementById('offers-coin-filter')?.addEventListener('click', e=>{
+    const btn = e.target.closest('.coin-filter');
+    if(!btn) return;
+    toggleCoinFilter(btn.dataset.coin || '');
+  });
   document.getElementById('offers-body')?.addEventListener('click', e=>{
     const pairBtn = e.target.closest('.offers-pick-pair');
     if(pairBtn){
@@ -1153,9 +1228,17 @@ function wire(){
   try{ const u = localStorage.getItem('bsx-mkts-unit'); if(u==='usd'||u==='coin') unit = u; } catch(e){}
   try{ const s = localStorage.getItem('bsx-mkts-offers-scope'); if(s==='all'||s==='pair') offersScope = s; } catch(e){}
   try{ const n = localStorage.getItem('bsx-mkts-net-filter'); if(n==='smsg'||n==='nostr'||n==='simplex') networkFilter = n; } catch(e){}
+  try{
+    const raw = localStorage.getItem('bsx-mkts-coin-filter');
+    const parsed = raw ? JSON.parse(raw) : [];
+    if(Array.isArray(parsed)){
+      coinFilter = parsed.filter(c => typeof c === 'string' && COIN_META[c]).slice(0, 2);
+    }
+  } catch(e){}
   wire();
   setOffersScope(offersScope);
   setNetworkFilter(networkFilter);
+  renderCoinFilter();
   loadCachedPrices();
   await Promise.all([fetchPrices(), fetchSnapshotManifest(), fetchHealth()]);
   await fetchOrderbook();
