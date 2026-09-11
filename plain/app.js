@@ -75,6 +75,8 @@ const KNOWN_MAKERS = {
   },
 };
 const WATCH_STORAGE_KEY = 'bsx-plain-watch';
+const COIN_FILTER_KEY = 'bsx-plain-coins';
+let coinFilter = [];
 const STALE_WARN_S = 30 * 60;
 const STALE_ALERT_S = 2 * 3600;
 
@@ -204,6 +206,75 @@ function countLiveBySeen(offers) {
 function formatNetCounts(counts) {
   return NET_ORDER.map(n => (NET_LABELS[n] || n) + ' ' + f.int(counts[n] || 0)).join(' · ');
 }
+function liveCoins() {
+  const s = new Set();
+  liveOffers().forEach(o => {
+    if (o.coin_from) s.add(o.coin_from);
+    if (o.coin_to) s.add(o.coin_to);
+  });
+  return [...s].sort();
+}
+function matchesCoins(o, coins) {
+  if (!coins || !coins.length) return true;
+  const sides = [o.coin_from, o.coin_to];
+  if (coins.length === 1) return sides.includes(coins[0]);
+  return sides.includes(coins[0]) && sides.includes(coins[1]);
+}
+function coinFilterLabel() {
+  if (coinFilter.length === 2) return coinFilter[0] + '/' + coinFilter[1];
+  if (coinFilter.length === 1) return coinFilter[0];
+  return '';
+}
+function parseCoinFilterParam(raw) {
+  if (!raw) return [];
+  return raw.split(/[,+]/).map(s => s.trim().toUpperCase()).filter(Boolean).slice(0, 2);
+}
+function loadStoredCoinFilter() {
+  try { return parseCoinFilterParam(localStorage.getItem(COIN_FILTER_KEY) || ''); }
+  catch (e) { return []; }
+}
+function saveCoinFilter(list) {
+  try {
+    if (!list.length) localStorage.removeItem(COIN_FILTER_KEY);
+    else localStorage.setItem(COIN_FILTER_KEY, list.join(','));
+  } catch (e) { /* ignore */ }
+}
+function syncCoinFilterUrl() {
+  const params = new URLSearchParams(location.search);
+  if (coinFilter.length) params.set('coin', coinFilter.join(','));
+  else params.delete('coin');
+  const qs = params.toString();
+  history.replaceState(null, '', qs ? location.pathname + '?' + qs : location.pathname);
+}
+function resolveCoinFilter(route) {
+  if (route.coins && route.coins.length) {
+    coinFilter = route.coins;
+    saveCoinFilter(coinFilter);
+    return;
+  }
+  if (!coinFilter.length) coinFilter = loadStoredCoinFilter();
+}
+function renderCoinFilterBar() {
+  const coins = liveCoins();
+  const links = ['<a href="./" class="coin-filter" data-coin="">' + (coinFilter.length ? 'all' : '[all]') + '</a>'];
+  coins.forEach(c => {
+    const on = coinFilter.includes(c);
+    links.push(
+      '<a href="?coin=' + encodeURIComponent(c) + '" class="coin-filter" data-coin="' + esc(c) + '">'
+      + (on ? '[' + esc(c) + ']' : esc(c)) + '</a>'
+    );
+  });
+  let html = '<div id="coin-filter-bar">';
+  html += '<p class="nav-back muted">coins: ' + links.join(' · ') + '</p>\n';
+  if (coinFilter.length === 2) {
+    html += '<p class="nav-back muted"><a href="' + esc(pairUrl(coinFilter[0], coinFilter[1])) + '">'
+      + 'open ' + esc(coinFilter[0] + '/' + coinFilter[1]) + ' →</a></p>\n';
+  } else if (coinFilter.length === 1) {
+    html += '<p class="nav-back muted">showing ' + esc(coinFilter[0]) + ' · <a href="./" class="coin-filter" data-coin="">clear</a></p>\n';
+  }
+  html += '</div>';
+  return html;
+}
 
 function spreadWord(p) {
   if (!isFinite(p) || p < 0) return '—';
@@ -296,7 +367,8 @@ function parseRoute() {
     ? watchRaw.split(',').map(s => parsePairParam(s.trim())).filter(Boolean)
     : [];
   const mark = parsePairParam(params.get('mark'));
-  return { pair, watchlist, mark };
+  const coins = parseCoinFilterParam(params.get('coin'));
+  return { pair, watchlist, mark, coins };
 }
 
 function pairCountAt(snap, base, quote) {
@@ -404,8 +476,14 @@ function offerExpiresIn(o) {
 }
 
 function renderAllListingsSection(limit) {
-  const offers = liveOffers().slice().sort((a, b) => offerUsdSize(b) - offerUsdSize(a));
-  if (!offers.length) return { text: '(none)', html: '', total: 0 };
+  const offers = liveOffers()
+    .filter(o => matchesCoins(o, coinFilter))
+    .slice()
+    .sort((a, b) => offerUsdSize(b) - offerUsdSize(a));
+  if (!offers.length) {
+    const none = coinFilter.length ? '(none for ' + coinFilterLabel() + ')' : '(none)';
+    return { text: none, html: '', total: 0 };
+  }
 
   const shown = offers.slice(0, limit);
 
@@ -697,7 +775,7 @@ function renderNow() {
 }
 
 function renderTopPairsSection(watchlist, highlightPair) {
-  let list = topPairs(TOP_N);
+  let list = topPairs(coinFilter.length ? 50 : TOP_N);
   if (watchlist.length) {
     const keys = watchlistKeys(watchlist);
     list = list.filter(t => keys.has(pairKey(t.base, t.quote)));
@@ -705,7 +783,20 @@ function renderTopPairsSection(watchlist, highlightPair) {
       list = topPairs(50).filter(t => keys.has(pairKey(t.base, t.quote)));
     }
   }
-  if (!list.length) return { text: watchlist.length ? '(no live pairs in watchlist)' : '(no live pairs)', html: '' };
+  if (coinFilter.length === 1) {
+    list = list.filter(t => t.base === coinFilter[0] || t.quote === coinFilter[0]);
+  } else if (coinFilter.length === 2) {
+    list = list.filter(t =>
+      (t.base === coinFilter[0] && t.quote === coinFilter[1]) ||
+      (t.base === coinFilter[1] && t.quote === coinFilter[0])
+    );
+  }
+  if (coinFilter.length) list = list.slice(0, TOP_N);
+  if (!list.length) {
+    const why = watchlist.length ? '(no live pairs in watchlist)'
+      : (coinFilter.length ? '(no live pairs for ' + coinFilterLabel() + ')' : '(no live pairs)');
+    return { text: why, html: '' };
+  }
 
   const totalLiq = totalNetworkLiq();
   const shownLiq = list.reduce((s, t) => s + t.liq, 0);
@@ -1131,6 +1222,7 @@ function renderPage() {
   if (!out) return;
 
   const route = parseRoute();
+  resolveCoinFilter(route);
   const pairParam = route.pair;
   const markPair = route.mark;
   const urlWatch = route.watchlist;
@@ -1233,6 +1325,9 @@ function renderPage() {
     html += '<p class="nav-back muted">highlight: ' + esc(markPair.base + '/' + markPair.quote)
       + ' · <a href="./">clear</a></p>\n';
   }
+  if (!pairParam) {
+    html += renderCoinFilterBar();
+  }
 
   html += hr('=', w);
   html += renderStaleBanner(ageSec);
@@ -1265,7 +1360,7 @@ function renderPage() {
 
     html += hr('=', w);
     if (topPairsBlock.html) {
-      html += blockHtml('Top pairs', topPairsBlock.html, watchlist.length ? 'filtered' : '');
+      html += blockHtml('Top pairs', topPairsBlock.html, (watchlist.length || coinFilter.length) ? 'filtered' : '');
     } else {
       html += block('Top pairs', topPairsText);
     }
@@ -1273,7 +1368,7 @@ function renderPage() {
 
     if (listingsBlock.html) {
       html += hr('=', w);
-      html += blockHtml('All listings', listingsBlock.html);
+      html += blockHtml('All listings', listingsBlock.html, coinFilter.length ? coinFilterLabel() : '');
       if (listingsBlock.total > LISTINGS_DEFAULT) {
         const label = listingsExpanded
           ? 'show fewer listings'
@@ -1381,6 +1476,20 @@ function renderPage() {
 
   document.getElementById('listings-toggle')?.addEventListener('click', () => {
     listingsExpanded = !listingsExpanded;
+    renderPage();
+  });
+
+  document.getElementById('coin-filter-bar')?.addEventListener('click', e => {
+    const a = e.target.closest('[data-coin]');
+    if (!a) return;
+    e.preventDefault();
+    const ticker = a.dataset.coin || '';
+    if (!ticker) coinFilter = [];
+    else if (coinFilter.includes(ticker)) coinFilter = coinFilter.filter(c => c !== ticker);
+    else if (coinFilter.length >= 2) coinFilter = [ticker];
+    else coinFilter = coinFilter.concat(ticker);
+    saveCoinFilter(coinFilter);
+    syncCoinFilterUrl();
     renderPage();
   });
 
