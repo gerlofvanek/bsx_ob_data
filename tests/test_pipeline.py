@@ -490,3 +490,40 @@ def test_nostr_event_rejects_bad_sig():
     assert listener.ingest_nostr_event(event) is False
     assert listener.offers == {}
     assert listener.stats.get("nostr_verify_fail", 0) == 1
+
+
+def test_scrape_had_traffic_any_net():
+    assert scraper.scrape_had_traffic({}) is False
+    assert scraper.scrape_had_traffic({"msgs_received": 0, "nostr_offers": 0}) is False
+    assert scraper.scrape_had_traffic({"msgs_received": 2}) is True
+    assert scraper.scrape_had_traffic({"nostr_offers": 1}) is True
+    assert scraper.scrape_had_traffic({"simplex_offers": 4}) is True
+
+
+def test_resolve_peers_dedupes_stream_addrs(monkeypatch):
+    calls = []
+
+    def fake_getaddrinfo(host, port, family, socktype):
+        calls.append((host, socktype))
+        return [
+            (2, socktype, 6, "", ("1.2.3.4", port)),
+            (2, socktype, 6, "", ("1.2.3.4", port)),
+            (2, socktype, 6, "", ("5.6.7.8", port)),
+        ]
+
+    monkeypatch.setattr(scraper.socket, "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(scraper, "DNS_SEEDS", ["seed.example"])
+    monkeypatch.setattr(scraper, "DNS_SEED_SERVICE_FILTERS", ())
+    peers = scraper.resolve_peers()
+    assert set(peers) == {("1.2.3.4", scraper.PARTICL_MAINNET_PORT),
+                          ("5.6.7.8", scraper.PARTICL_MAINNET_PORT)}
+    assert calls and all(c[1] == scraper.socket.SOCK_STREAM for c in calls)
+
+
+def test_peer_tcp_reachable_refused():
+    import socket
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    assert scraper.peer_tcp_reachable("127.0.0.1", port, timeout=0.3) is False

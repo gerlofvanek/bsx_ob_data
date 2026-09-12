@@ -255,7 +255,20 @@ class P2PConnection(asyncio.Protocol):
         loop = NetworkThread.network_event_loop
         logger.info('Connecting to Particl Node: %s:%d' % (self.dstaddr, self.dstport))
         coroutine = loop.create_connection(lambda: self, host=self.dstaddr, port=self.dstport)
-        return lambda: loop.call_soon_threadsafe(loop.create_task, coroutine)
+
+        def _spawn():
+            task = loop.create_task(coroutine)
+
+            def _consume(t):
+                if t.cancelled():
+                    return
+                exc = t.exception()
+                if exc is not None:
+                    logger.debug('P2P connect failed: %s', exc)
+
+            task.add_done_callback(_consume)
+
+        return lambda: loop.call_soon_threadsafe(_spawn)
 
     def peer_accept_connection(self, connect_id, connect_cb=lambda: None, *, net, timeout_factor, supports_v2_p2p, reconnect):
         self.peer_connect_helper('0', 0, net, timeout_factor)

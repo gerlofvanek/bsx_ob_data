@@ -47,7 +47,7 @@ jobs:
       # --idle-exit ends the listen window early once the peer goes quiet.
       # --nostr also pulls kind-4859 / #t=bsx events from public relays.
       # --simplex starts the cached client, joins #bsx, and tails group SMSGs.
-      # --strict fails the job if no SMSG traffic arrived (dead peer / silent break).
+      # --strict fails the job if SMSG, Nostr, and SimpleX all produced no traffic.
       - name: Fetch orderbook from Particl / Nostr / SimpleX
         run: |
           python scraper.py --auto \

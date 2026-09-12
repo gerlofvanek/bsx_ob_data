@@ -24,6 +24,7 @@ import hmac
 import json
 import logging
 import os
+import random
 import socket
 import struct
 import sys
@@ -57,7 +58,17 @@ log = logging.getLogger("BSXScraper")
 # BSX shared network key (all nodes use this to encrypt/decrypt offers)
 NETWORK_KEY_WIF = "7sW2UEcHXvuqEjkpE5mD584zRaQYs6WXYohue4jLFZPTvMSxwvgs"
 PARTICL_MAINNET_PORT = 51738
-DNS_SEEDS = ["mainnet-seed.particl.io", "dnsseed-mainnet.particl.community"]
+# Official Particl DNS seeds plus the older community hostname (often NXDOMAIN).
+DNS_SEEDS = [
+    "mainnet-seed.particl.io",
+    "dnsseed-mainnet.particl.io",
+    "mainnet.particl.io",
+    "dnsseed.tecnovert.net",
+    "dnsseed-mainnet.particl.community",
+]
+# Seeders that support BIP155-style service filters advertise SMSG-capable
+# nodes under x20 / x21 (NODE_SMSG, NODE_NETWORK|NODE_SMSG).
+DNS_SEED_SERVICE_FILTERS = (NODE_SMSG, NODE_NETWORK | NODE_SMSG)
 SMSG_HDR_LEN = 108
 SMSG_ID_LEN = 28
 # Keep this many timestamped snapshot files + manifest.json. Older files are
@@ -503,17 +514,58 @@ def decode_wif_privkey(wif: str) -> bytes:
     return n.to_bytes(38, byteorder="big")[1:33]
 
 
-def resolve_peers() -> list:
-    peers = []
+def _seed_hostnames():
+    hosts = list(DNS_SEEDS)
     for seed in DNS_SEEDS:
+        for bits in DNS_SEED_SERVICE_FILTERS:
+            hosts.append(f"x{bits:x}.{seed}")
+    return hosts
+
+
+def resolve_peers() -> list:
+    """Unique (ip, port) from DNS seeds. SOCK_STREAM only; shuffled."""
+    peers = []
+    seen = set()
+    for seed in _seed_hostnames():
         try:
-            ips = socket.getaddrinfo(seed, PARTICL_MAINNET_PORT, socket.AF_INET)
-            for info in ips:
-                peers.append((info[4][0], PARTICL_MAINNET_PORT))
-            log.info(f"Resolved {len(ips)} peers from {seed}")
+            infos = socket.getaddrinfo(
+                seed, PARTICL_MAINNET_PORT, socket.AF_UNSPEC, socket.SOCK_STREAM)
+            added = 0
+            for info in infos:
+                ip = info[4][0]
+                port = info[4][1] if len(info[4]) > 1 else PARTICL_MAINNET_PORT
+                key = (ip, port)
+                if key in seen:
+                    continue
+                seen.add(key)
+                peers.append(key)
+                added += 1
+            if added:
+                log.info(f"Resolved {added} unique peer(s) from {seed}")
         except Exception as e:
             log.warning(f"Failed to resolve {seed}: {e}")
-    return list(set(peers))
+    random.shuffle(peers)
+    return peers
+
+
+def peer_tcp_reachable(host, port, timeout=1.5) -> bool:
+    """Fail-fast TCP check so refused peers skip the 8s P2P wait."""
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError as e:
+        err = e.errno or type(e).__name__
+        log.warning(f"  {host}:{port} unreachable ({err})")
+        return False
+
+
+def scrape_had_traffic(stats) -> bool:
+    """True if SMSG, Nostr, or SimpleX produced usable scrape traffic."""
+    if not stats:
+        return False
+    return (stats.get("msgs_received", 0) > 0
+            or stats.get("nostr_offers", 0) > 0
+            or stats.get("simplex_offers", 0) > 0)
 
 
 def format_amount(amount: int, coin_id: int) -> str:
@@ -1295,12 +1347,15 @@ def main():
     parser.add_argument("--max-peers", type=int, default=1,
                         help="Scrape up to N peers sequentially, merging results "
                              "(default: 1). Each peer gets its own --duration window")
+    parser.add_argument("--connect-timeout", type=float, default=1.5,
+                        help="TCP probe timeout in seconds before a P2P handshake "
+                             "(default: 1.5). Refused peers skip the 8s wait")
     parser.add_argument("--drop-expired", action="store_true",
                         help="Exclude expired offers from the published JSON instead of "
                              "leaving them for the UI to filter")
     parser.add_argument("--strict", action="store_true",
-                        help="Exit non-zero if the run received no SMSG messages at all "
-                             "(for CI to catch dead peers / silent failures)")
+                        help="Exit non-zero if SMSG, Nostr, and SimpleX all produced "
+                             "no traffic (for CI to catch silent failures)")
     parser.add_argument("--plain-dir",
                         help="If set, generate plain/stats.txt, summary.json, feed.xml, etc. "
                              "under this directory after a successful scrape")
@@ -1405,6 +1460,8 @@ def main():
     try:
         for idx, (cand_ip, cand_port) in enumerate(candidates):
             log.info(f"[{idx + 1}/{len(candidates)}] Trying peer {cand_ip}:{cand_port}")
+            if not peer_tcp_reachable(cand_ip, cand_port, timeout=args.connect_timeout):
+                continue
             listener = BSXOfferListener(privkey)
             # Share the store so SMSG / Nostr / SimpleX mutate the same book.
             src = prev_listener if prev_listener is not None else store
@@ -1595,9 +1652,7 @@ def main():
                 "simplex_ok": listener.stats.get("simplex_ok", 0),
                 "simplex_messages": listener.stats.get("simplex_messages", 0),
                 "simplex_offers": listener.stats.get("simplex_offers", 0),
-                "ok": (listener.stats.get("msgs_received", 0) > 0
-                       or listener.stats.get("nostr_offers", 0) > 0
-                       or listener.stats.get("simplex_offers", 0) > 0),
+                "ok": scrape_had_traffic(listener.stats),
             }
             write_json_atomic(args.health_file, health)
         except Exception as e:
@@ -1621,8 +1676,8 @@ def main():
 
     log.info(f"Done. {listener.stats}")
 
-    if args.strict and listener.stats.get("msgs_received", 0) == 0:
-        log.error("Strict mode: connected but received no SMSG messages")
+    if args.strict and not scrape_had_traffic(listener.stats):
+        log.error("Strict mode: no SMSG / Nostr / SimpleX traffic")
         return 1
     return 0
 
