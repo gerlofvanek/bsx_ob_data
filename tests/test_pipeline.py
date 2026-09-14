@@ -513,11 +513,25 @@ def test_resolve_peers_dedupes_stream_addrs(monkeypatch):
 
     monkeypatch.setattr(scraper.socket, "getaddrinfo", fake_getaddrinfo)
     monkeypatch.setattr(scraper, "DNS_SEEDS", ["seed.example"])
-    monkeypatch.setattr(scraper, "DNS_SEED_SERVICE_FILTERS", ())
-    peers = scraper.resolve_peers()
+    peers = scraper.resolve_peers(timeout=1.0)
     assert set(peers) == {("1.2.3.4", scraper.PARTICL_MAINNET_PORT),
                           ("5.6.7.8", scraper.PARTICL_MAINNET_PORT)}
     assert calls and all(c[1] == scraper.socket.SOCK_STREAM for c in calls)
+    assert all(c[0] == "seed.example" for c in calls)
+
+
+def test_getaddrinfo_timeout(monkeypatch):
+    def hang(*_a, **_k):
+        time.sleep(2)
+
+    monkeypatch.setattr(scraper.socket, "getaddrinfo", hang)
+    t0 = time.monotonic()
+    try:
+        scraper.getaddrinfo_timeout("slow.example", 51738, timeout=0.2)
+        raise AssertionError("expected timeout")
+    except OSError as e:
+        assert "timed out" in str(e)
+    assert time.monotonic() - t0 < 1.0
 
 
 def test_peer_tcp_reachable_refused():

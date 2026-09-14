@@ -358,11 +358,15 @@ def collect_simplex_smsgs(
         elif start_if_needed:
             binary = find_simplex_binary(client_path)
             if not binary:
-                meta["error"] = "no simplex-chat binary and nothing listening"
+                meta["error"] = (
+                    f"no simplex-chat binary (looked for {client_path or 'PATH'}) "
+                    "and nothing listening"
+                )
                 log.warning(
-                    "SimpleX: skipped (no client on %s and no simplex-chat binary). "
+                    "SimpleX: skipped (no client on %s and no simplex-chat at %s). "
                     "Install one or start BasicSwap with SimpleX, or pass --simplex-client.",
                     ws_url,
+                    client_path or "PATH / cache",
                 )
                 return [], meta
             data_dir = data_dir or default_data_dir()

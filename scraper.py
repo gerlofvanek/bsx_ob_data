@@ -58,17 +58,15 @@ log = logging.getLogger("BSXScraper")
 # BSX shared network key (all nodes use this to encrypt/decrypt offers)
 NETWORK_KEY_WIF = "7sW2UEcHXvuqEjkpE5mD584zRaQYs6WXYohue4jLFZPTvMSxwvgs"
 PARTICL_MAINNET_PORT = 51738
-# Official Particl DNS seeds plus the older community hostname (often NXDOMAIN).
+# Only seeds that currently answer. Official leftovers (mainnet.particl.io,
+# dnsseed-mainnet.particl.io, dnsseed-mainnet.particl.community) and x20/x21
+# service-bit prefixes NXDOMAIN or SERVFAIL for ~10s each. explorer.particl.zip
+# shows the network is live (~100 peers) but Insight /peer is just 127.0.0.1.
 DNS_SEEDS = [
     "mainnet-seed.particl.io",
-    "dnsseed-mainnet.particl.io",
-    "mainnet.particl.io",
     "dnsseed.tecnovert.net",
-    "dnsseed-mainnet.particl.community",
 ]
-# Seeders that support BIP155-style service filters advertise SMSG-capable
-# nodes under x20 / x21 (NODE_SMSG, NODE_NETWORK|NODE_SMSG).
-DNS_SEED_SERVICE_FILTERS = (NODE_SMSG, NODE_NETWORK | NODE_SMSG)
+DNS_RESOLVE_TIMEOUT = 2.0
 SMSG_HDR_LEN = 108
 SMSG_ID_LEN = 28
 # Keep this many timestamped snapshot files + manifest.json. Older files are
@@ -514,36 +512,59 @@ def decode_wif_privkey(wif: str) -> bytes:
     return n.to_bytes(38, byteorder="big")[1:33]
 
 
-def _seed_hostnames():
-    hosts = list(DNS_SEEDS)
-    for seed in DNS_SEEDS:
-        for bits in DNS_SEED_SERVICE_FILTERS:
-            hosts.append(f"x{bits:x}.{seed}")
-    return hosts
+def getaddrinfo_timeout(host, port, timeout=DNS_RESOLVE_TIMEOUT):
+    """getaddrinfo with a hard deadline so a SERVFAIL seed cannot stall the scrape."""
+    box = []
+
+    def worker():
+        try:
+            box.append(socket.getaddrinfo(
+                host, port, socket.AF_UNSPEC, socket.SOCK_STREAM))
+        except Exception as e:
+            box.append(e)
+
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+    t.join(timeout)
+    if not box:
+        raise socket.gaierror(socket.EAI_AGAIN, f"DNS timed out after {timeout}s")
+    if isinstance(box[0], Exception):
+        raise box[0]
+    return box[0]
 
 
-def resolve_peers() -> list:
-    """Unique (ip, port) from DNS seeds. SOCK_STREAM only; shuffled."""
+def resolve_peers(timeout=DNS_RESOLVE_TIMEOUT) -> list:
+    """Unique (ip, port) from DNS seeds. SOCK_STREAM only; shuffled; parallel."""
     peers = []
     seen = set()
-    for seed in _seed_hostnames():
+    lock = threading.Lock()
+
+    def resolve_one(seed):
         try:
-            infos = socket.getaddrinfo(
-                seed, PARTICL_MAINNET_PORT, socket.AF_UNSPEC, socket.SOCK_STREAM)
+            infos = getaddrinfo_timeout(seed, PARTICL_MAINNET_PORT, timeout=timeout)
             added = 0
-            for info in infos:
-                ip = info[4][0]
-                port = info[4][1] if len(info[4]) > 1 else PARTICL_MAINNET_PORT
-                key = (ip, port)
-                if key in seen:
-                    continue
-                seen.add(key)
-                peers.append(key)
-                added += 1
+            with lock:
+                for info in infos:
+                    ip = info[4][0]
+                    port = info[4][1] if len(info[4]) > 1 else PARTICL_MAINNET_PORT
+                    key = (ip, port)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    peers.append(key)
+                    added += 1
             if added:
                 log.info(f"Resolved {added} unique peer(s) from {seed}")
         except Exception as e:
             log.warning(f"Failed to resolve {seed}: {e}")
+
+    threads = [threading.Thread(target=resolve_one, args=(seed,), daemon=True)
+               for seed in DNS_SEEDS]
+    for t in threads:
+        t.start()
+    deadline = time.monotonic() + timeout + 0.5
+    for t in threads:
+        t.join(max(0.05, deadline - time.monotonic()))
     random.shuffle(peers)
     return peers
 
