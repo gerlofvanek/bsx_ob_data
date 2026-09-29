@@ -5,8 +5,9 @@
      orderbook.json         — current snapshot written by scraper.py
      health.json            — last-run telemetry
      snapshots/manifest.json — recent historical snapshots for 24h deltas
-     CoinGecko /simple/price — USD reference price per coin
-     CoinGecko /coins/{id}/market_chart — price history for the selected pair
+     DefiLlama coins API — USD reference price and history, keyed by CoinGecko id
+     (CoinGecko keyless /simple/price is blocked; set COINGECKO_DEMO_API_KEY
+     on the scraper to use CoinGecko's demo key header instead)
    ============================================================================ */
 
 const COIN_GECKO_IDS = {
@@ -52,7 +53,13 @@ const STALE_AFTER_S       = 30*60;           // freshness pill flips amber after
 const VERY_STALE_AFTER_S  = 2*60*60;         // …and red after 2 hours
 const PRICE_CACHE_KEY     = 'bsx-mkts-prices-v1';
 const PRICE_CACHE_TTL_MS  = REFRESH_INTERVAL_MS;
-const HIST_CACHE_KEY      = 'bsx-mkts-hist-v1'; // CoinGecko market_chart cache
+const HIST_CACHE_KEY      = 'bsx-mkts-hist-v1'; // USD price-history cache
+const LLAMA_PRICES_URL    = 'https://coins.llama.fi/prices/current/';
+const HIST_WINDOWS = {
+  '1':  { sec: 86400, span: 24, period: '1h' },
+  '7':  { sec: 7 * 86400, span: 42, period: '4h' },
+  '30': { sec: 30 * 86400, span: 30, period: '1d' },
+};
 const HIST_CACHE_TTL_MS   = 30*60*1000;
 const TICKER_LIMIT        = 6;               // top-N pairs shown as tickers
 
@@ -77,7 +84,7 @@ let priceChart      = null;
 let depthChart      = null;
 let sparkCharts     = [];
 let unit            = 'usd';            // 'usd' | 'coin'
-let resolution      = '1';              // CoinGecko `days` param for market_chart
+let resolution      = '1';              // HIST_WINDOWS key: '1' | '7' | '30'
 let CUR             = null;             // {base, quote} of the selected pair
 let pollTimer       = null;
 let identityQuery   = '';             // filter offers by msg_id or addr_from
@@ -925,9 +932,10 @@ function renderDepthChart(){
 }
 
 /* ----------------------------------------------------------------------------
-   Price chart: pulled from CoinGecko market_chart for the BASE coin (in USD).
+   Price chart: DefiLlama chart for the BASE coin (USD), keyed by CoinGecko id.
    Cached in localStorage per (coin, days) for HIST_CACHE_TTL_MS.
    When unit='coin' we re-scale the USD series by the quote-coin USD price.
+   Points are [timestamp_ms, price], matching the previous CoinGecko shape.
    ---------------------------------------------------------------------------- */
 function histCacheRead(){ try { return JSON.parse(localStorage.getItem(HIST_CACHE_KEY)||'{}'); } catch(e){ return {}; } }
 function histCacheWrite(o){ try { localStorage.setItem(HIST_CACHE_KEY, JSON.stringify(o)); } catch(e){} }
@@ -937,15 +945,19 @@ async function fetchPriceHistory(coinId, days){
   const cache = histCacheRead();
   const hit = cache[key];
   if(hit && (Date.now() - hit.ts) < HIST_CACHE_TTL_MS) return hit.data;
+  const win = HIST_WINDOWS[days] || HIST_WINDOWS['1'];
   try{
-    const url = `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=usd&days=${days}`;
+    const start = Math.floor(Date.now() / 1000) - win.sec;
+    const url = `https://coins.llama.fi/chart/coingecko:${coinId}?start=${start}&span=${win.span}&period=${win.period}`;
     const r = await fetch(url);
     if(!r.ok) return hit ? hit.data : null;
     const j = await r.json();
-    if(!j.prices) return hit ? hit.data : null;
-    cache[key] = { ts: Date.now(), data: j.prices };
+    const series = j.coins && j.coins['coingecko:'+coinId] && j.coins['coingecko:'+coinId].prices;
+    if(!series || !series.length) return hit ? hit.data : null;
+    const data = series.map(p => [p.timestamp * 1000, p.price]);
+    cache[key] = { ts: Date.now(), data };
     histCacheWrite(cache);
-    return j.prices;
+    return data;
   } catch(e){ return hit ? hit.data : null; }
 }
 async function renderPriceChart(){
@@ -1073,13 +1085,14 @@ function saveCachedPrices(){
 }
 async function fetchPrices(){
   try{
-    const ids = [...new Set(Object.values(COIN_GECKO_IDS))].join(',');
-    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids='+ids+'&vs_currencies=usd');
-    if(!r.ok){ console.warn('CoinGecko price fetch:', r.status); return; }
+    const ids = [...new Set(Object.values(COIN_GECKO_IDS))];
+    const r = await fetch(LLAMA_PRICES_URL + ids.map(id => 'coingecko:'+id).join(','));
+    if(!r.ok){ console.warn('Price fetch:', r.status); return; }
     const d = await r.json();
-    if(d.status){ console.warn('CoinGecko rate limited'); return; }
-    for(const [id, val] of Object.entries(d)){
-      if(val && val.usd) latestPrices[id] = val.usd;
+    const bag = (d && d.coins) || {};
+    for(const [key, val] of Object.entries(bag)){
+      const id = key.includes(':') ? key.split(':').slice(1).join(':') : key;
+      if(val && val.price) latestPrices[id] = val.price;
     }
     saveCachedPrices();
   } catch(e){ console.warn('Price fetch failed:', e); }

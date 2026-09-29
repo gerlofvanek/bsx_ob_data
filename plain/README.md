@@ -33,8 +33,8 @@ A brolly-inspired minimal view of BasicSwap network liquidity. Lives in `/plain/
 ## Data sources
 
 - `../orderbook.json`, `../health.json`, `../snapshots/manifest.json`
-- `summary.json` — cached USD prices (fallback if CoinGecko rate-limits)
-- CoinGecko — live USD prices in the browser
+- `summary.json` — cached USD prices (fallback if the live price fetch fails)
+- DefiLlama — live USD prices in the browser, keyed by CoinGecko id (CoinGecko's keyless price API is blocked)
 
 ## Local dev
 

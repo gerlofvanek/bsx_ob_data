@@ -90,19 +90,72 @@ def live_offers(book: dict, now: int | None = None) -> list[dict]:
     return [o for o in book.get("offers", []) if not is_expired(o, now)]
 
 
-def fetch_prices() -> dict[str, float]:
-    ids = ",".join(sorted(set(COIN_GECKO_IDS.values())))
-    url = f"https://api.coingecko.com/api/v3/simple/price?ids={ids}&vs_currencies=usd"
-    try:
-        with urllib.request.urlopen(url, timeout=15) as resp:
-            data = json.load(resp)
-        out: dict[str, float] = {}
-        for coin_id, val in data.items():
-            if isinstance(val, dict) and val.get("usd"):
-                out[coin_id] = float(val["usd"])
-        return out
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError):
+def _http_json(url: str, headers: dict[str, str] | None = None) -> Any:
+    req_headers = {"User-Agent": "bsx-orderbook", "Accept": "application/json"}
+    if headers:
+        req_headers.update(headers)
+    req = urllib.request.Request(url, headers=req_headers)
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.load(resp)
+
+
+def _prices_from_coingecko(data: Any) -> dict[str, float]:
+    if not isinstance(data, dict) or data.get("status"):
         return {}
+    out: dict[str, float] = {}
+    for coin_id, val in data.items():
+        if isinstance(val, dict) and val.get("usd"):
+            out[str(coin_id)] = float(val["usd"])
+    return out
+
+
+def _prices_from_llama(data: Any) -> dict[str, float]:
+    coins = data.get("coins") if isinstance(data, dict) else None
+    if not isinstance(coins, dict):
+        return {}
+    out: dict[str, float] = {}
+    for key, val in coins.items():
+        if not isinstance(val, dict) or not val.get("price"):
+            continue
+        cid = str(key).split(":", 1)[1] if ":" in str(key) else str(key)
+        out[cid] = float(val["price"])
+    return out
+
+
+def fetch_prices() -> dict[str, float]:
+    """USD prices keyed by CoinGecko id.
+
+    CoinGecko's keyless /simple/price endpoint is blocked. A demo key
+    (COINGECKO_DEMO_API_KEY, sent as x-cg-demo-api-key) still works.
+    Missing coins are filled from DefiLlama, which prices the same ids
+    without a key. Wownero is not on that feed.
+    """
+    ids = sorted(set(COIN_GECKO_IDS.values()))
+    prices: dict[str, float] = {}
+    key = os.environ.get("COINGECKO_DEMO_API_KEY", "").strip()
+    if key:
+        url = (
+            "https://api.coingecko.com/api/v3/simple/price?ids="
+            + ",".join(ids)
+            + "&vs_currencies=usd"
+        )
+        try:
+            prices = _prices_from_coingecko(
+                _http_json(url, {"x-cg-demo-api-key": key})
+            )
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError):
+            prices = {}
+    if len(prices) < len(ids):
+        coins = ",".join(f"coingecko:{cid}" for cid in ids)
+        try:
+            llama = _prices_from_llama(
+                _http_json("https://coins.llama.fi/prices/current/" + coins)
+            )
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError):
+            llama = {}
+        for cid, px in llama.items():
+            prices.setdefault(cid, px)
+    return prices
 
 
 def coin_usd(ticker: str, prices: dict[str, float]) -> float:
@@ -1114,7 +1167,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--manifest", help="Path to snapshots/manifest.json")
     p.add_argument("--out-dir", default="plain", help="Output directory (default: plain)")
     p.add_argument("--site-base", default="", help="Public site base URL for RSS links")
-    p.add_argument("--no-prices", action="store_true", help="Skip CoinGecko USD fetch")
+    p.add_argument("--no-prices", action="store_true", help="Skip USD price fetch")
     args = p.parse_args(argv)
 
     with open(args.orderbook, encoding="utf-8") as f:

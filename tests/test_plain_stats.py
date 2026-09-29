@@ -1,4 +1,5 @@
 """Tests for plain stats artifact generation."""
+import io
 import json
 import os
 import sys
@@ -43,6 +44,47 @@ def test_offer_nets_and_counts():
     ])
     assert counts == {"smsg": 2, "nostr": 1, "simplex": 1}
     assert "SMSG 2" in plain_stats.format_net_counts(counts)
+
+
+def test_fetch_prices_llama_without_key(monkeypatch):
+    monkeypatch.delenv("COINGECKO_DEMO_API_KEY", raising=False)
+    payload = {
+        "coins": {
+            "coingecko:bitcoin": {"price": 100.5},
+            "coingecko:monero": {"price": 2},
+        }
+    }
+
+    def fake_urlopen(req, timeout=15):
+        assert "coins.llama.fi/prices/current/" in req.full_url
+        assert "coingecko:bitcoin" in req.full_url
+        return io.BytesIO(json.dumps(payload).encode())
+
+    monkeypatch.setattr(plain_stats.urllib.request, "urlopen", fake_urlopen)
+    prices = plain_stats.fetch_prices()
+    assert prices["bitcoin"] == 100.5
+    assert prices["monero"] == 2.0
+
+
+def test_fetch_prices_demo_key_then_fills_gaps(monkeypatch):
+    monkeypatch.setenv("COINGECKO_DEMO_API_KEY", "demo-key")
+    seen = []
+
+    def fake_urlopen(req, timeout=15):
+        seen.append(req.full_url)
+        if "api.coingecko.com" in req.full_url:
+            assert req.get_header("X-cg-demo-api-key") == "demo-key"
+            body = {"bitcoin": {"usd": 90}}
+        else:
+            body = {"coins": {"coingecko:monero": {"price": 3}}}
+        return io.BytesIO(json.dumps(body).encode())
+
+    monkeypatch.setattr(plain_stats.urllib.request, "urlopen", fake_urlopen)
+    prices = plain_stats.fetch_prices()
+    assert prices["bitcoin"] == 90.0
+    assert prices["monero"] == 3.0
+    assert any("api.coingecko.com" in u for u in seen)
+    assert any("coins.llama.fi" in u for u in seen)
 
 
 def test_build_summary_includes_prices(book):

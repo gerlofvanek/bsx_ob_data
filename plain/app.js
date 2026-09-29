@@ -1522,13 +1522,14 @@ async function fetchSummary() {
 
 async function fetchPrices() {
   try {
-    const ids = [...new Set(Object.values(COIN_GECKO_IDS))].join(',');
-    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=' + ids + '&vs_currencies=usd');
+    const ids = [...new Set(Object.values(COIN_GECKO_IDS))];
+    const r = await fetch('https://coins.llama.fi/prices/current/' + ids.map(id => 'coingecko:' + id).join(','));
     if (!r.ok) return;
     const d = await r.json();
-    if (d.status) return;
-    for (const [id, val] of Object.entries(d)) {
-      if (val?.usd) latestPrices[id] = val.usd;
+    const bag = d?.coins || {};
+    for (const [key, val] of Object.entries(bag)) {
+      const id = key.includes(':') ? key.split(':').slice(1).join(':') : key;
+      if (val?.price) latestPrices[id] = val.price;
     }
   } catch (e) { console.warn('Price fetch failed:', e); }
 }
