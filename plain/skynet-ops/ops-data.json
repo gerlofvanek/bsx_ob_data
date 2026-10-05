@@ -1,34 +1,34 @@
 {
-  "updated_at": "2026-10-05 03:14:55 UTC",
-  "timestamp": 1791170095,
+  "updated_at": "2026-10-05 03:16:53 UTC",
+  "timestamp": 1791170213,
   "threat_level": 0,
   "threat_label": "LOW",
   "alerts": [],
   "scores": {
     "snapshot_age_s": 0,
-    "foreign_smsg_ratio": 0.0,
-    "revoke_ratio": 0.0,
-    "msg_rate_per_s": 0.0,
+    "foreign_smsg_ratio": 0.08,
+    "revoke_ratio": 0.51,
+    "msg_rate_per_s": 12.469,
     "msg_rate_median_14": 12.77,
-    "active_offers_median_14": 81
+    "active_offers_median_14": 80
   },
   "health": {
-    "last_run_ts": 1791170095,
-    "last_run_iso": "2026-10-05 03:14:55 UTC",
-    "last_bsx_msg_ts": 1791166928,
+    "last_run_ts": 1791170213,
+    "last_run_iso": "2026-10-05 03:16:53 UTC",
+    "last_bsx_msg_ts": 1791170177,
     "duration_s": 32,
     "peers_scraped": 1,
-    "msgs_received": 0,
-    "msgs_decrypted": 6,
-    "offers_parsed": 5,
-    "offers_merged_from_previous": 84,
-    "revokes_seen": 0,
-    "revokes_matched_offer": 0,
-    "revokes_orphan": 18019,
-    "revoked_offers_dropped": 0,
-    "buckets_requested": 0,
-    "wants_sent": 0,
-    "msg_rate_per_s": 0.0,
+    "msgs_received": 399,
+    "msgs_decrypted": 373,
+    "offers_parsed": 240,
+    "offers_merged_from_previous": 2,
+    "revokes_seen": 123,
+    "revokes_matched_offer": 93,
+    "revokes_orphan": 17929,
+    "revoked_offers_dropped": 93,
+    "buckets_requested": 39,
+    "wants_sent": 236,
+    "msg_rate_per_s": 12.469,
     "nostr_relays_ok": 4,
     "nostr_relays_failed": 1,
     "nostr_events": 6,
@@ -39,21 +39,22 @@
     "ok": true
   },
   "stats": {
-    "msgs_received": 0,
-    "msgs_decrypted": 6,
-    "offers_parsed": 5,
-    "decrypt_errors": 0,
-    "not_for_us": 0,
+    "msgs_received": 399,
+    "msgs_decrypted": 373,
+    "offers_parsed": 240,
+    "decrypt_errors": 32,
+    "not_for_us": 32,
     "parse_errors": 0,
     "message_type_counts": {
-      "offer": 5,
-      "type_15": 1
+      "offer": 245,
+      "offer_revoke": 123,
+      "type_15": 5
     },
-    "revokes_seen": 0,
-    "buckets_requested": 0,
-    "haves_received": 0,
-    "wants_sent": 0,
-    "offers_merged_from_previous": 84,
+    "revokes_seen": 123,
+    "buckets_requested": 39,
+    "haves_received": 39,
+    "wants_sent": 236,
+    "offers_merged_from_previous": 2,
     "nostr_relays_ok": 4,
     "nostr_relays_failed": 1,
     "nostr_events": 6,
@@ -63,35 +64,34 @@
     "simplex_offers": 0,
     "simplex_error": "FileNotFoundError: [Errno 2] No such file or directory: '.simplex-ci/bin/simplex-chat'",
     "reposts_collapsed": 0,
-    "revoked_offers_dropped": 0,
+    "revoked_offers_dropped": 93,
     "revokes_invalid_sig": 0,
-    "revokes_matched_offer": 0,
-    "revokes_orphan": 18019
+    "revokes_matched_offer": 93,
+    "revokes_orphan": 17929
   },
   "market": {
-    "active_offers": 86,
-    "num_offers": 89,
-    "unique_makers": 77,
-    "unique_pairs": 13,
-    "last_bsx_msg_ts": 1791166928
+    "active_offers": 91,
+    "num_offers": 149,
+    "unique_makers": 114,
+    "unique_pairs": 15,
+    "last_bsx_msg_ts": 1791170177
   },
   "trends": {
     "active_offers": [
-      81,
+      78,
+      79,
+      78,
+      78,
+      80,
       80,
       81,
-      80,
-      80,
-      82,
-      82,
+      85,
+      88,
+      90,
       83,
-      87,
-      91,
-      93,
-      86
+      91
     ],
     "msg_rate_per_s": [
-      12.781,
       12.75,
       12.781,
       0.0,
@@ -102,7 +102,8 @@
       12.968,
       12.71,
       12.281,
-      0.0
+      0.0,
+      12.469
     ],
     "invalid_revokes": [
       0,
@@ -124,58 +125,58 @@
       "addr": "PhAKdVaqt6AkNNBCj79rGSxoEg9PV9EB44",
       "addr_short": "PhAKdV\u2026EB44",
       "offers": 9,
-      "pct": 10.5,
+      "pct": 9.9,
       "flagged": false
     },
     {
       "addr": "PnL9Hn2M1gP95ZAbSAbxKjc6nhwiLEfeN7",
       "addr_short": "PnL9Hn\u2026feN7",
-      "offers": 2,
-      "pct": 2.3,
-      "flagged": false
-    },
-    {
-      "addr": "PkBS9N5JG2uxMXwVFmwu5QodzFEVddZTMP",
-      "addr_short": "PkBS9N\u2026ZTMP",
-      "offers": 1,
-      "pct": 1.2,
-      "flagged": false
-    },
-    {
-      "addr": "Ps6RYTNPDW7SaR3UJG41dsS5HdvYEy1fLR",
-      "addr_short": "Ps6RYT\u20261fLR",
-      "offers": 1,
-      "pct": 1.2,
+      "offers": 3,
+      "pct": 3.3,
       "flagged": false
     },
     {
       "addr": "Ps89VRsdTbG2mYVM3RA8hj6mBqiKEcERtW",
       "addr_short": "Ps89VR\u2026ERtW",
       "offers": 1,
-      "pct": 1.2,
+      "pct": 1.1,
       "flagged": false
     },
     {
       "addr": "PdcYw3kbsvhEyk56mez5Uifgeve6u1VnrQ",
       "addr_short": "PdcYw3\u2026VnrQ",
       "offers": 1,
-      "pct": 1.2,
+      "pct": 1.1,
       "flagged": false
     },
     {
       "addr": "PeydeqdYNqxfUSmyepro5SSo5PjELeTmRS",
       "addr_short": "Peydeq\u2026TmRS",
       "offers": 1,
-      "pct": 1.2,
+      "pct": 1.1,
       "flagged": false
     },
     {
       "addr": "PvExT3NF9bV1CuxGy6vwRQu3rF2pUmwKeF",
       "addr_short": "PvExT3\u2026wKeF",
       "offers": 1,
-      "pct": 1.2,
+      "pct": 1.1,
+      "flagged": false
+    },
+    {
+      "addr": "PfJqT5tvt8hvQVYyqJirCKuHNivTJVjpUV",
+      "addr_short": "PfJqT5\u2026jpUV",
+      "offers": 1,
+      "pct": 1.1,
+      "flagged": false
+    },
+    {
+      "addr": "Ps6RYTNPDW7SaR3UJG41dsS5HdvYEy1fLR",
+      "addr_short": "Ps6RYT\u20261fLR",
+      "offers": 1,
+      "pct": 1.1,
       "flagged": false
     }
   ],
-  "bsx_messages": 5
+  "bsx_messages": 368
 }
