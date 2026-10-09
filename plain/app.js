@@ -1259,7 +1259,8 @@ function renderPage() {
     out.innerHTML =
       '<p class="tagline">plain text market stats</p>'
       + '<p class="err">Failed to load orderbook</p>'
-      + '<p class="nav-top"><a href="../">full markets view</a></p>';
+      + '<p class="nav-top"><a href="../">full markets view</a>'
+      + ' · <a href="https://basicswapdex.com/donations">donate</a></p>';
     out.style.maxWidth = '';
     return;
   }
@@ -1314,7 +1315,9 @@ function renderPage() {
   html += '<p class="tagline">' + esc(isSkynetMode() ? 'MARKET INTELLIGENCE · PLAIN MODE' : 'plain text market stats') + '</p>\n';
   html += '<p class="headline">' + esc(isSkynetMode() ? 'PARTSMSG MESH' : 'BasicSwap · SMSG · Nostr · SimpleX')
     + '<br>' + esc(dateStr) + '</p>\n';
-  html += '<p class="nav-top"><a href="../">full markets view</a> · ' + themeToggleHtml() + '</p>\n';
+  html += '<p class="nav-top"><a href="../">full markets view</a>'
+    + ' · <a href="https://basicswapdex.com/donations">donate</a> · '
+    + themeToggleHtml() + '</p>\n';
 
   if (pairParam) {
     html += '<p class="nav-back muted"><a href="./">← network overview</a></p>\n';
