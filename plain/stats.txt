@@ -1,19 +1,19 @@
 plain text market stats
 
 BasicSwap · SMSG · Nostr · SimpleX
-2026-10-12 20:36:55 UTC
+2026-10-12 20:38:52 UTC
 
 =============================================
 
 Now
 
-listed liquidity  $402K
-active pairs      24
-active makers     113
-live offers       112  (+166.7% vs 24h)
-new offers · 24h   169
+listed liquidity  $400K
+active pairs      23
+active makers     78
+live offers       108  (+157.1% vs 24h)
+new offers · 24h   111
 snapshot age      0s
-live by net       SMSG 112 · Nostr 10 · SimpleX 0
+live by net       SMSG 99 · Nostr 9 · SimpleX 0
 
 =============================================
 
@@ -21,18 +21,18 @@ Top pairs
 
  #  Pair               Liq    %  Bar               Spread   N  Δ24h  Trend   
 --  ---------------  -----  ---  ------------  ----------  --  ----  --------
- 1  BTC/XMR          $215K  54%  ############   fair 2.0%  36   +22  ▅▆▆▆··▇▇
- 2  BTC/LTC           $80K  20%  ####           fair 1.8%  15   +13  ▃▄▄▄··▇▇
- 3  LTC/XMR           $68K  17%  ####           wide 3.9%  15   +10  ▄▆▆▆··▇▇
+ 1  BTC/XMR          $214K  53%  ############   fair 2.0%  34    -7  ▆▆▆··▇▇▁
+ 2  BTC/LTC           $80K  20%  ####           fair 1.8%  15    +4  ▄▄▄··▇▇▄
+ 3  LTC/XMR           $68K  17%  ####           wide 3.9%  15    -4  ▆▆▆··▇▇▁
  4  LTC/WOW          $9.4K   2%  #             wide 78.7%   3     0  ········
- 5  BTC/DOGE         $8.9K   2%                wide 18.8%   5    +5  ·▇▇▇▇▇▇▇
- 6  DOGE/LTC         $8.9K   2%                wide 19.0%   5    +5  ·▄▇▇▇▇▇▇
- 7  PART_BLIND/XMR   $2.0K   1%                 wide 9.8%   5    -3  ▄▄▄▇··▄▄
- 8  LTC/PART_BLIND   $2.0K   1%                         —   3    -1  ▇▇▇▇···▇
- 9  FIRO/PART_BLIND  $2.0K   0%                         —   2     0  ▇▇▇▇··▇▇
+ 5  BTC/DOGE         $8.9K   2%  #             wide 18.8%   5    +5  ········
+ 6  DOGE/LTC         $8.9K   2%  #             wide 19.0%   5    +5  ·▇▇▇▇▇▇▇
+ 7  PART_BLIND/XMR   $2.0K   1%                 wide 9.8%   5    -3  ▄▄▇··▄▄▄
+ 8  LTC/PART_BLIND   $2.0K   1%                         —   3    -1  ▇▇▇···▇·
+ 9  FIRO/PART_BLIND  $1.8K   0%                         —   1    -2  ▇▇▇▄▄▇▇·
 10  BCH/LTC          $1.3K   0%                 fair 3.0%   2     0  ········
 
-$398K shown · $402K total · top 10 pairs
+$396K shown · $400K total · top 10 pairs
 
 =============================================
 
@@ -41,22 +41,22 @@ Activity
 last 12 snapshots · ~1h window
 
 live offers
-112|          ##
- 84|      ##  ##
- 56|############
+112|         ###
+ 84|     ##  ###
+ 57|############
 
 total offers
-169|          ##
-120|########  ##
+169|         ## 
+120|#######  ###
  71|############
 
 active pairs
- 24|          ##
- 18|          ##
+ 24|         ###
+ 18|         ###
  13|############
    +------------
     12/1012/1012/1012/1012/1012/1012/1012/1012/1012/1012/10*12/10
-now 112 live · 169 total · 24 pairs
+now 108 live · 111 total · 23 pairs
 
 =============================================
 
@@ -64,10 +64,10 @@ Liquidity by coin
 
 Coin          Liq  Bar         
 ----------  -----  ------------
-BTC         $190K  ############
+BTC         $189K  ############
 XMR         $136K  #########   
 LTC          $68K  ####        
-PART_BLIND  $6.2K              
+PART_BLIND  $6.0K              
 PART         $641              
 DOGE         $331              
 BCH          $275              
@@ -79,11 +79,11 @@ WOW            $0
 
 Offer freshness
 
-<1h  107
+<1h  103
 1–6h  3
 6–24h  2
 >24h  0
-<6h left  111
+<6h left  107
 
 =============================================
 
@@ -91,14 +91,14 @@ New offers · 24h
 
 Pair            New
 --------------  ---
-BTC/XMR         +36
-BTC/LTC         +15
+BTC/XMR         +34
 LTC/XMR         +15
+BTC/LTC         +15
 PART_BLIND/XMR   +5
 BTC/DOGE         +5
 DOGE/LTC         +5
-LTC/WOW          +3
 LTC/PART_BLIND   +3
+LTC/WOW          +3
 
 =============================================
 
@@ -119,15 +119,19 @@ Pto9…Ni6o       1  $9.4K      1
 
 Since last snapshot
 
-since previous snapshot (20261012T203453Z.json)
-live offers  +4  (108 → 112)
-total offers +2  (167 → 169)
-pairs         unchanged
+since previous snapshot (20261012T203655Z.json)
+live offers  -4  (112 → 108)
+total offers -58  (169 → 111)
+pairs lost    BCH/WOW
 
 pair offer churn (top)
-  BTC/LTC      +1  (23 → 24)
-  LTC/PART_BLIND +1  (3 → 4)
+  BTC/XMR      -30  (64 → 34)
+  LTC/XMR      -14  (29 → 15)
+  BTC/LTC      -9  (24 → 15)
+  FIRO/PART_BLIND -2  (3 → 1)
+  LTC/PART_BLIND -1  (4 → 3)
+  PART_BLIND/PIVX -1  (2 → 1)
 
 ---------------------------------------------
-market data last fetched at: 2026-10-12 20:36:55 UTC
+market data last fetched at: 2026-10-12 20:38:52 UTC
 plain view: /plain/ · full view: /
