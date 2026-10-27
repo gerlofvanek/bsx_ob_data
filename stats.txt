@@ -1,19 +1,19 @@
 plain text market stats
 
 BasicSwap · SMSG · Nostr · SimpleX
-2026-10-27 11:04:57 UTC
+2026-10-27 11:06:58 UTC
 
 =============================================
 
 Now
 
-listed liquidity  $334K
+listed liquidity  $330K
 active pairs      17
-active makers     103
-live offers       90  (+100.0% vs 24h)
-new offers · 24h   136
-snapshot age      1s
-live by net       SMSG 90 · Nostr 10 · SimpleX 0
+active makers     75
+live offers       88  (+91.3% vs 24h)
+new offers · 24h   89
+snapshot age      0s
+live by net       SMSG 79 · Nostr 9 · SimpleX 0
 
 =============================================
 
@@ -21,18 +21,18 @@ Top pairs
 
  #  Pair        Liq    %  Bar               Spread   N  Δ24h  Trend   
 --  --------  -----  ---  ------------  ----------  --  ----  --------
- 1  BTC/XMR   $162K  48%  ############   fair 2.4%  33    -3  ·▁▅▇▇▆▆▆
- 2  BTC/LTC    $78K  23%  ######         wide 4.1%  13    +3  ·▂▂▅▅▆▇▇
- 3  LTC/XMR    $40K  12%  ###           tight 0.8%  17    -6  ···▄▄▅▇▇
- 4  BTC/DASH   $21K   6%  ##                     —   1    +1  ···▇▇▇▇▇
- 5  DOGE/LTC  $8.6K   3%  #             wide 19.0%   5    +5  ··▆▇▇▇▇▇
- 6  BTC/DOGE  $8.6K   3%  #             wide 18.6%   5    +5  ··▄▆▆▆▇▇
+ 1  BTC/XMR   $162K  49%  ############   fair 2.4%  33    -5  ▄▆▇▇▇▆▇·
+ 2  BTC/LTC    $74K  22%  ######         wide 4.1%  12    +3  ▄▄▆▆▇▇▇·
+ 3  LTC/XMR    $40K  12%  ###           tight 0.8%  17    -6  ▄▃▆▆▆▇▇·
+ 4  BTC/DASH   $21K   6%  ##                     —   1    +1  ··▇▇▇▇▇▇
+ 5  DOGE/LTC  $8.6K   3%  #             wide 19.0%   5    +5  ·▆▇▇▇▇▇▇
+ 6  BTC/DOGE  $8.6K   3%  #             wide 18.6%   5    +5  ·▄▆▆▆▇▇▇
  7  LTC/WOW   $8.5K   3%  #             wide 72.5%   3     0  ········
- 8  DASH/LTC  $5.6K   2%                 wide 4.5%   2    +2  ···▇▇▇▇▇
+ 8  DASH/LTC  $5.6K   2%                 wide 4.5%   2    +2  ··▇▇▇▇▇▇
  9  BCH/LTC   $1.3K   0%                 fair 2.5%   2     0  ········
-10  BCH/XMR    $437   0%                 fair 1.7%   2     0  ▇▇▇▇▇·▇▇
+10  BTC/PIVX   $204   0%                         —   1    +1  ··▇▇▇▇▇▇
 
-$333K shown · $334K total · top 10 pairs
+$330K shown · $330K total · top 10 pairs
 
 =============================================
 
@@ -41,22 +41,22 @@ Activity
 last 12 snapshots · ~1h window
 
 live offers
- 92|       #####
- 63|    ########
+ 92|      ######
+ 63|   #########
  34|############
 
 total offers
-136|      ######
- 85|# ##########
+136|     ###### 
+ 85| ###########
  34|############
 
 active pairs
- 18|       #####
- 14|       #####
+ 18|      ######
+ 14|      ######
  11|############
    +------------
     27/1027/1027/1027/1027/1027/1027/1027/1027/1027/1027/10*27/10
-now 90 live · 136 total · 17 pairs
+now 88 live · 89 total · 17 pairs
 
 =============================================
 
@@ -65,8 +65,8 @@ Liquidity by coin
 Coin    Liq  Bar         
 ----  -----  ------------
 BTC   $211K  ############
-LTC    $78K  ####        
-XMR    $44K  ###         
+LTC    $74K  ####        
+XMR    $44K  ##          
 PIVX   $560              
 DOGE   $320              
 BCH    $281              
@@ -78,11 +78,11 @@ WOW      $0
 
 Offer freshness
 
-<1h  83
-1–6h  5
-6–24h  2
+<1h  81
+1–6h  4
+6–24h  3
 >24h  0
-<6h left  85
+<6h left  84
 
 =============================================
 
@@ -92,12 +92,12 @@ Pair      New
 --------  ---
 BTC/XMR   +33
 LTC/XMR   +17
-BTC/LTC   +13
+BTC/LTC   +12
 BTC/DOGE   +5
 DOGE/LTC   +5
 LTC/WOW    +3
-BCH/XMR    +2
 BCH/LTC    +2
+DASH/LTC   +2
 
 =============================================
 
@@ -118,15 +118,17 @@ Pj3m…v34i        1  $5.0K      1
 
 Since last snapshot
 
-since previous snapshot (20261027T110254Z.json)
-live offers  -2  (92 → 90)
-total offers +1  (135 → 136)
-pairs lost    BTC/WOW
+since previous snapshot (20261027T110457Z.json)
+live offers  -2  (90 → 88)
+total offers -47  (136 → 89)
+pairs         unchanged
 
 pair offer churn (top)
-  BTC/XMR      +1  (51 → 52)
-  LTC/XMR      +1  (35 → 36)
+  LTC/XMR      -19  (36 → 17)
+  BTC/XMR      -19  (52 → 33)
+  BTC/LTC      -8  (20 → 12)
+  BCH/XMR      -1  (2 → 1)
 
 ---------------------------------------------
-market data last fetched at: 2026-10-27 11:04:57 UTC
+market data last fetched at: 2026-10-27 11:06:58 UTC
 plain view: /plain/ · full view: /
