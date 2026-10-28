@@ -1,40 +1,41 @@
 {
-  "timestamp": 1793168336,
-  "updated_at": "2026-10-28 06:18:56 UTC",
-  "num_offers": 83,
-  "active_offers": 82,
-  "unique_makers": 80,
+  "timestamp": 1793168466,
+  "updated_at": "2026-10-28 06:21:06 UTC",
+  "num_offers": 80,
+  "active_offers": 79,
+  "unique_makers": 77,
   "unique_pairs": 13,
-  "last_bsx_msg_ts": 1793151845,
+  "last_bsx_msg_ts": 1793151842,
   "stats": {
     "msgs_received": 0,
-    "msgs_decrypted": 16,
+    "msgs_decrypted": 17,
     "offers_parsed": 13,
     "decrypt_errors": 17,
     "not_for_us": 17,
     "parse_errors": 0,
     "message_type_counts": {
       "offer": 13,
-      "type_15": 3
+      "type_15": 3,
+      "offer_revoke": 1
     },
-    "revokes_seen": 0,
+    "revokes_seen": 1,
     "buckets_requested": 0,
     "haves_received": 0,
     "wants_sent": 0,
-    "offers_merged_from_previous": 70,
+    "offers_merged_from_previous": 68,
     "nostr_relays_ok": 5,
     "nostr_relays_failed": 0,
-    "nostr_events": 33,
+    "nostr_events": 34,
     "nostr_offers": 13,
     "simplex_ok": 0,
     "simplex_messages": 0,
     "simplex_offers": 0,
     "simplex_error": "FileNotFoundError: [Errno 2] No such file or directory: '.simplex-ci/bin/simplex-chat'",
     "reposts_collapsed": 0,
-    "revoked_offers_dropped": 0,
+    "revoked_offers_dropped": 1,
     "revokes_invalid_sig": 0,
-    "revokes_matched_offer": 0,
-    "revokes_orphan": 30065
+    "revokes_matched_offer": 1,
+    "revokes_orphan": 30039
   },
   "offers": [
     {
@@ -341,43 +342,6 @@
       "highest_bid": null
     },
     {
-      "msg_id": "000000006ae18751e502675f80f8553214527f356b00a2639641a766",
-      "timestamp": 1793165137,
-      "protocol_version": 7,
-      "coin_from": "XMR",
-      "coin_to": "PART_BLIND",
-      "coin_from_id": 6,
-      "coin_to_id": 7,
-      "amount_from": 40000000000,
-      "amount_to": 12608000000,
-      "amount_from_str": "0.040000000000",
-      "amount_to_str": "126.08000000",
-      "min_bid_amount": 20000000000,
-      "min_bid_amount_str": "0.020000000000",
-      "swap_type": 5,
-      "lock_type": 2,
-      "lock_value": 86400,
-      "fee_rate_from": 20000000,
-      "fee_rate_to": 200000,
-      "amount_negotiable": true,
-      "rate_negotiable": false,
-      "auto_accept_type": 1,
-      "time_valid": 3000,
-      "rate": 0.3152,
-      "proof_address": "",
-      "addr_from": "Ps6RYTNPDW7SaR3UJG41dsS5HdvYEy1fLR",
-      "message_nets": "nostr,smsg",
-      "networks": [
-        "nostr",
-        "smsg"
-      ],
-      "seen_on": [
-        "nostr"
-      ],
-      "bid_count": 0,
-      "highest_bid": null
-    },
-    {
       "msg_id": "000000006ae18ebb8771f4820d770e643ba11cbf0d0ec6ae5ffbc42b",
       "timestamp": 1793167035,
       "protocol_version": 7,
@@ -407,42 +371,6 @@
       "networks": [
         "smsg",
         "simplex",
-        "nostr"
-      ],
-      "seen_on": [
-        "nostr"
-      ],
-      "bid_count": 0,
-      "highest_bid": null
-    },
-    {
-      "msg_id": "000000006ae15362ce4263dccbcb279df55b8fac2c2843fa2bffc90d",
-      "timestamp": 1793151842,
-      "protocol_version": 7,
-      "coin_from": "XMR",
-      "coin_to": "LTC",
-      "coin_from_id": 6,
-      "coin_to_id": 3,
-      "amount_from": 9000000000,
-      "amount_to": 1440000,
-      "amount_from_str": "0.009000000000",
-      "amount_to_str": "0.01440000",
-      "min_bid_amount": 5000000000,
-      "min_bid_amount_str": "0.005000000000",
-      "swap_type": 5,
-      "lock_type": 2,
-      "lock_value": 28800,
-      "fee_rate_from": 20000000,
-      "fee_rate_to": 1007,
-      "amount_negotiable": true,
-      "rate_negotiable": false,
-      "auto_accept_type": 1,
-      "time_valid": 172800,
-      "rate": 0.00016,
-      "proof_address": "",
-      "addr_from": "PZub7ArHgtr51ppps3zEoCpufMC7XidiG4",
-      "message_nets": "nostr",
-      "networks": [
         "nostr"
       ],
       "seen_on": [
@@ -482,6 +410,43 @@
         "smsg",
         "simplex",
         "nostr"
+      ],
+      "seen_on": [
+        "nostr"
+      ],
+      "bid_count": 0,
+      "highest_bid": null
+    },
+    {
+      "msg_id": "000000006ae18751e502675f80f8553214527f356b00a2639641a766",
+      "timestamp": 1793165137,
+      "protocol_version": 7,
+      "coin_from": "XMR",
+      "coin_to": "PART_BLIND",
+      "coin_from_id": 6,
+      "coin_to_id": 7,
+      "amount_from": 40000000000,
+      "amount_to": 12608000000,
+      "amount_from_str": "0.040000000000",
+      "amount_to_str": "126.08000000",
+      "min_bid_amount": 20000000000,
+      "min_bid_amount_str": "0.020000000000",
+      "swap_type": 5,
+      "lock_type": 2,
+      "lock_value": 86400,
+      "fee_rate_from": 20000000,
+      "fee_rate_to": 200000,
+      "amount_negotiable": true,
+      "rate_negotiable": false,
+      "auto_accept_type": 1,
+      "time_valid": 3000,
+      "rate": 0.3152,
+      "proof_address": "",
+      "addr_from": "Ps6RYTNPDW7SaR3UJG41dsS5HdvYEy1fLR",
+      "message_nets": "nostr,smsg",
+      "networks": [
+        "nostr",
+        "smsg"
       ],
       "seen_on": [
         "nostr"
@@ -1966,42 +1931,6 @@
       "highest_bid": null
     },
     {
-      "msg_id": "000000006ae18f6208c57a2e833f27db5cad5d66659015306b112f8a",
-      "timestamp": 1793167202,
-      "protocol_version": 7,
-      "coin_from": "LTC",
-      "coin_to": "XMR",
-      "coin_from_id": 3,
-      "coin_to_id": 6,
-      "amount_from": 6500000000,
-      "amount_to": 6444777883180,
-      "amount_from_str": "65.00000000",
-      "amount_to_str": "6.444777883180",
-      "min_bid_amount": 500000000,
-      "min_bid_amount_str": "5.00000000",
-      "swap_type": 5,
-      "lock_type": 2,
-      "lock_value": 86400,
-      "fee_rate_from": 1000,
-      "fee_rate_to": 20000000,
-      "amount_negotiable": true,
-      "rate_negotiable": false,
-      "auto_accept_type": 1,
-      "time_valid": 1200,
-      "rate": 991.50428972,
-      "proof_address": "",
-      "addr_from": "PkTYUSjMeePueWMNahW7peoAJVvggsYb6N",
-      "message_nets": "smsg",
-      "networks": [
-        "smsg"
-      ],
-      "seen_on": [
-        "smsg"
-      ],
-      "bid_count": 0,
-      "highest_bid": null
-    },
-    {
       "msg_id": "000000006ae18f6ca7187c241978ec4d2a1cb0e2fd77ec84379ac7a5",
       "timestamp": 1793167212,
       "protocol_version": 7,
@@ -2171,42 +2100,6 @@
       "rate": 7.740806666666667e-07,
       "proof_address": "",
       "addr_from": "PaqVggSDEm5sPbejFXi1CzBEmr6sAxdnYQ",
-      "message_nets": "smsg",
-      "networks": [
-        "smsg"
-      ],
-      "seen_on": [
-        "smsg"
-      ],
-      "bid_count": 0,
-      "highest_bid": null
-    },
-    {
-      "msg_id": "000000006ae190a10ea6268fc0e37db2cde98cb91e29aba1b9aa1067",
-      "timestamp": 1793167521,
-      "protocol_version": 7,
-      "coin_from": "BTC",
-      "coin_to": "XMR",
-      "coin_from_id": 2,
-      "coin_to_id": 6,
-      "amount_from": 739801,
-      "amount_to": 999999641795,
-      "amount_from_str": "0.00739801",
-      "amount_to_str": "0.999999641795",
-      "min_bid_amount": 739801,
-      "min_bid_amount_str": "0.00739801",
-      "swap_type": 5,
-      "lock_type": 2,
-      "lock_value": 86400,
-      "fee_rate_from": 1000,
-      "fee_rate_to": 20000000,
-      "amount_negotiable": true,
-      "rate_negotiable": false,
-      "auto_accept_type": 1,
-      "time_valid": 900,
-      "rate": 1351714.3688573008,
-      "proof_address": "",
-      "addr_from": "Pjxc95veJb2G4UfMh2ScdeQf4itcL3Jb4p",
       "message_nets": "smsg",
       "networks": [
         "smsg"
