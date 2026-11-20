@@ -242,7 +242,7 @@ function netChips(o){
       : advertised.has(n)
         ? `Maker advertised ${label} (not seen on that transport this scrape).`
         : label;
-    return `<span class="px-1.5 py-0.5 rounded text-[10px] ${cls}" data-tippy-content="${tip}">${label}</span>`;
+    return `<span class="px-1.5 py-0.5 rounded text-[10px] ${cls}" data-tippy-content="${escAttr(tip)}">${escAttr(label)}</span>`;
   }).join('');
 }
 function setNetworkFilter(net){
@@ -346,7 +346,8 @@ function filterByMaker(addr){
 
 function coinDot(sym, cls='w-5 h-5 text-[10px]'){
   const m = coinMeta(sym);
-  return `<span class="inline-grid place-items-center rounded-full text-white font-bold ${cls}" style="background:${m.c}">${sym[0]}</span>`;
+  const ch = escAttr(String(sym||'?').charAt(0));
+  return `<span class="inline-grid place-items-center rounded-full text-white font-bold ${cls}" style="background:${m.c}">${ch}</span>`;
 }
 function spreadClass(p){
   if(!isFinite(p) || p<0) return {cls:'text-slate-400', word:'—'};
@@ -524,9 +525,9 @@ function renderHeatmap(){
   let vMax = 0; coins.forEach(a => coins.forEach(b => { if(a!==b){ const v = heatLookup(liq,a,b); if(v>vMax) vMax=v; }}));
   const label = c => c.replace('PART_BLIND','P_BLIND').replace('PART_ANON','P_ANON').replace('LTC_MWEB','LTC_MW');
   let html = '<thead><tr><th class="p-1"></th>' +
-    coins.map(c=>`<th class="p-1 text-slate-400 font-medium text-[10px]">${label(c)}</th>`).join('') + '</tr></thead><tbody>';
+    coins.map(c=>`<th class="p-1 text-slate-400 font-medium text-[10px]">${escAttr(label(c))}</th>`).join('') + '</tr></thead><tbody>';
   for(const r of coins){
-    html += `<tr><td class="p-1 text-right text-slate-400 font-medium pr-2 text-[10px]">${label(r)}</td>`;
+    html += `<tr><td class="p-1 text-right text-slate-400 font-medium pr-2 text-[10px]">${escAttr(label(r))}</td>`;
     for(const c of coins){
       if(r===c){ html += '<td class="text-center py-2 text-slate-600">—</td>'; continue; }
       const v = heatLookup(liq, r, c);
@@ -534,8 +535,8 @@ function renderHeatmap(){
       const light = v > vMax*0.4 ? '#fff' : '#cbd5e1';
       html += `<td class="text-center py-2 rounded cursor-pointer hover:ring-2 ring-brand transition"
                  style="${heatColor(v, vMax)};color:${light}"
-                 data-tippy-content="${r}/${c} · ${f.fiat(v)} live liquidity"
-                 data-base="${r}" data-quote="${c}">${f.fiatCompact(v)}</td>`;
+                 data-tippy-content="${escAttr(r+'/'+c+' · '+f.fiat(v)+' live liquidity')}"
+                 data-base="${escAttr(r)}" data-quote="${escAttr(c)}">${f.fiatCompact(v)}</td>`;
     }
     html += '</tr>';
   }
@@ -607,11 +608,11 @@ function renderTickers(){
     const series = pairSparklineSeries(pairKey(t.base, t.quote));
     const up = series.length>=2 ? series[series.length-1] >= series[0] : true;
     return `<button class="text-left rounded-2xl bg-white dark:bg-ink-800 border border-slate-200 dark:border-ink-600 p-4 hover:border-brand transition w-full"
-              data-base="${t.base}" data-quote="${t.quote}">
+              data-base="${escAttr(t.base)}" data-quote="${escAttr(t.quote)}">
       <div class="flex items-center justify-between mb-2">
         <div class="flex items-center gap-2 font-semibold">
           <span class="flex -space-x-1">${coinDot(t.base)}${coinDot(t.quote)}</span>
-          ${t.base}/${t.quote}
+          ${escAttr(t.base)}/${escAttr(t.quote)}
         </div>
         <span class="text-xs text-slate-400">${f.fiatCompact(t.liq)} liq</span>
       </div>
@@ -701,7 +702,7 @@ function renderHeaderPrice(){
   const lblEl   = document.getElementById('chart-unit-label');
   if(unit==='usd'){
     if(priceEl) priceEl.textContent = bUsd ? f.fiat(bUsd) : '—';
-    if(subEl)   subEl.innerHTML     = midCoin ? `<span class="text-slate-400">≈ ${f.coin(midCoin)} ${quote}</span>` : '<span class="text-slate-400">price unknown</span>';
+    if(subEl)   subEl.innerHTML     = midCoin ? `<span class="text-slate-400">≈ ${f.coin(midCoin)} ${escAttr(quote)}</span>` : '<span class="text-slate-400">price unknown</span>';
   } else {
     if(priceEl) priceEl.textContent = midCoin ? f.coin(midCoin)+' '+quote : '—';
     if(subEl)   subEl.innerHTML     = bUsd ? `<span class="text-slate-400">≈ ${f.fiat(bUsd)}</span>` : '';
@@ -722,11 +723,11 @@ function renderBook(){
     const takerHint = side==='ask'
       ? `Maker sells ${base} — take it by sending ${quote}, you receive ${base}.`
       : `Maker buys ${base} — take it by sending ${base}, you receive ${quote}.`;
-    const priceTip = `${f.coinFull(o.price)} ${quote}${qUsd?' · '+f.fiat(o.price*qUsd):''} — ${takerHint}`;
+    const priceTip = escAttr(`${f.coinFull(o.price)} ${quote}${qUsd?' · '+f.fiat(o.price*qUsd):''} — ${takerHint}`);
     return `<div class="relative grid grid-cols-3 gap-2 px-1 py-0.5 rounded">
       <span class="depthbar ${side==='bid'?'bid-bar':'ask-bar'}" style="width:${pct}%"></span>
       <span class="relative z-10 ${priceCol}" data-tippy-content="${priceTip}">${priceStr}</span>
-      <span class="relative z-10 text-right" data-tippy-content="${f.coinFull(o.amount)} ${base}">${f.coin(o.amount)}</span>
+      <span class="relative z-10 text-right" data-tippy-content="${escAttr(f.coinFull(o.amount)+' '+base)}">${f.coin(o.amount)}</span>
       <span class="relative z-10 text-right text-slate-400">${f.coin(o.total)}</span>
     </div>`;
   };
@@ -763,7 +764,7 @@ function bidChip(o){
   if(hb && hb.amount_str){
     tip += ` Highest active bid: ${hb.amount_str} ${o.coin_from} → ${hb.amount_to_str} ${o.coin_to}.`;
   }
-  return `<span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/15 text-amber-600 dark:text-amber-400" data-tippy-content="${tip}">${n} bid${n>1?'s':''}</span>`;
+  return `<span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/15 text-amber-600 dark:text-amber-400" data-tippy-content="${escAttr(tip)}">${n} bid${n>1?'s':''}</span>`;
 }
 function renderOffers(){
   const showAll = offersScope === 'all';
@@ -862,17 +863,17 @@ function renderOffers(){
       ? `<span class="inline-flex items-center gap-1">${makerLogoHtml(meta)}${makerBtn}</span>`
       : makerBtn;
     const pairCell = showAll
-      ? `<td class="py-2"><button type="button" class="inline-flex items-center gap-1 font-semibold text-brand hover:underline offers-pick-pair" data-base="${escAttr(o.coin_from)}" data-quote="${escAttr(o.coin_to)}">${coinDot(o.coin_from,'w-4 h-4 text-[8px]')}${coinDot(o.coin_to,'w-4 h-4 text-[8px] -ml-1')}<span>${o.coin_from}/${o.coin_to}</span></button></td>`
+      ? `<td class="py-2"><button type="button" class="inline-flex items-center gap-1 font-semibold text-brand hover:underline offers-pick-pair" data-base="${escAttr(o.coin_from)}" data-quote="${escAttr(o.coin_to)}">${coinDot(o.coin_from,'w-4 h-4 text-[8px]')}${coinDot(o.coin_to,'w-4 h-4 text-[8px] -ml-1')}<span>${escAttr(o.coin_from)}/${escAttr(o.coin_to)}</span></button></td>`
       : '';
     return `<tr class="border-b border-slate-100 dark:border-ink-700/60 hover:bg-slate-50 dark:hover:bg-ink-700/40">
       ${pairCell}
       <td class="py-2"><span class="inline-flex items-center gap-1.5">${coinDot(o.coin_to,'w-4 h-4 text-[8px]')}
-        <span data-tippy-content="${f.coinFull(ta)} ${o.coin_to} — what you pay the maker">${f.coin(ta)} ${o.coin_to}</span></span></td>
+        <span data-tippy-content="${escAttr(f.coinFull(ta)+' '+o.coin_to+' — what you pay the maker')}">${f.coin(ta)} ${escAttr(o.coin_to)}</span></span></td>
       <td class="py-2 text-slate-400">→</td>
       <td class="py-2"><span class="inline-flex items-center gap-1.5">${coinDot(o.coin_from,'w-4 h-4 text-[8px]')}
-        <span data-tippy-content="${f.coinFull(fa)} ${o.coin_from} — what the maker sends you">${f.coin(fa)} ${o.coin_from}</span></span></td>
+        <span data-tippy-content="${escAttr(f.coinFull(fa)+' '+o.coin_from+' — what the maker sends you')}">${f.coin(fa)} ${escAttr(o.coin_from)}</span></span></td>
       <td class="py-2 text-right">${usd?f.fiat(usd):'—'}</td>
-      <td class="py-2 text-right text-slate-400" data-tippy-content="${rateQuotePerBase!=null?f.coinFull(rateQuotePerBase)+' '+rateLabel:''}">${rateQuotePerBase!=null?f.coin(rateQuotePerBase):'—'}</td>
+      <td class="py-2 text-right text-slate-400" data-tippy-content="${escAttr(rateQuotePerBase!=null?f.coinFull(rateQuotePerBase)+' '+rateLabel:'')}">${rateQuotePerBase!=null?f.coin(rateQuotePerBase):'—'}</td>
       <td class="py-2 text-right ${mktCls}" data-tippy-content="${mktTip}">${mktStr}</td>
       <td class="py-2">${makerCell}</td>
       <td class="py-2 text-right text-slate-400">${expS>0?f.ageShort(expS):'expired'}</td>
@@ -1121,7 +1122,7 @@ async function fetchOrderbook(){
   } catch(e){
     console.error('Orderbook fetch failed:', e);
     const ob = document.getElementById('offers-body');
-    if(ob) ob.innerHTML = '<tr><td colspan="9" class="py-8 text-center text-rose-500 text-sm">Failed to load orderbook.json — '+(e.message||e)+'</td></tr>';
+    if(ob) ob.innerHTML = '<tr><td colspan="9" class="py-8 text-center text-rose-500 text-sm">Failed to load orderbook.json — '+escAttr(e.message||e)+'</td></tr>';
     updateFreshnessPill();
   }
 }
