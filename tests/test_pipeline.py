@@ -140,6 +140,24 @@ def test_encrypted_offer_roundtrip():
     assert offer["message_nets"] == ""
 
 
+def test_length_delimited_coin_id_does_not_break_json():
+    """A coin field sent as bytes (HTML payload seen on Nostr) must be dropped
+    so json.dumps of the book cannot raise TypeError."""
+    _, pkh, _addr = make_maker()
+    junk = b'<img src=x onerror=alert("COIN-XSS")>'
+    proto = (
+        _len_field(2, junk)
+        + _len_field(3, junk)
+        + _varint_field(4, 100_000)
+    )
+    payload = bytes([scraper.MessageTypes.OFFER]) + proto
+    env = build_smsg_envelope(payload, pkh, int(time.time()), eph_seed=b"\x04" * 32)
+    listener = fresh_listener()
+    listener._process_smsg_data(env)
+    assert listener.offers == {}
+    json.dumps(listener.get_orderbook_dict())
+
+
 def test_encrypted_revoke_drops_offer_end_to_end():
     key, pkh, _addr = make_maker()
     ts = int(time.time())

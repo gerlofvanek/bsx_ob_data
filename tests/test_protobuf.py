@@ -79,6 +79,25 @@ def test_offer_message_skips_unknown_fields():
     assert not hasattr(o, "field_99")
 
 
+def test_offer_message_skips_length_delimited_coin_ids():
+    """Coin ids are varints. A length-delimited blob in that field (an HTML
+    payload seen on Nostr) must be ignored so it never becomes offer bytes."""
+    junk = b'<img src=x onerror=alert("COIN-XSS")>'
+    payload = (
+        _len_field(2, junk)
+        + _len_field(3, junk)
+        + _varint_field(4, 100_000)
+        + _varint_field(2, 2)
+        + _varint_field(3, 6)
+    )
+    o = OfferMessage()
+    o.from_bytes(payload)
+    assert o.coin_from == 2
+    assert o.coin_to == 6
+    assert o.amount_from == 100_000
+    assert not isinstance(o.coin_from, (bytes, bytearray))
+
+
 def test_offer_message_negotiable_flags():
     payload = (
         _varint_field(2, 2) + _varint_field(3, 6) + _varint_field(4, 1)

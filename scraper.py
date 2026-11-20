@@ -306,6 +306,45 @@ def decode_varint(b: bytes, offset: int = 0):
     return i, num_bytes
 
 
+def _pb_take(b: bytes, offset: int, wire_type: int):
+    """Read one protobuf value. Returns (value, new_offset), or None for a wire
+    type this parser cannot skip (fixed32/fixed64)."""
+    if wire_type == 0:
+        val, lv = decode_varint(b, offset)
+        return val, offset + lv
+    if wire_type == 2:
+        flen, lv = decode_varint(b, offset)
+        offset += lv
+        return b[offset:offset + flen], offset + flen
+    return None
+
+
+def _parse_protobuf(obj, b: bytes) -> None:
+    """Fill obj from a protobuf payload using obj._map = {field: (name, wire_type)}.
+
+    A known field sent with the wrong wire type is skipped, not stored. Coin ids
+    are varints; a length-delimited blob in that slot (seen on Nostr as an HTML
+    payload) must not land in the offer dict, where it breaks json.dumps.
+    """
+    o = 0
+    while o < len(b):
+        tag, lv = decode_varint(b, o)
+        o += lv
+        wire_type = tag & 7
+        spec = obj._map.get(tag >> 3)
+        if spec is None or spec[1] != wire_type:
+            taken = _pb_take(b, o, wire_type)
+            if taken is None:
+                break
+            _, o = taken
+            continue
+        taken = _pb_take(b, o, wire_type)
+        if taken is None:
+            break
+        setattr(obj, spec[0], taken[0])
+        o = taken[1]
+
+
 class OfferMessage:
     """Minimal protobuf-like parser for BSX OfferMessage."""
     _map = {
@@ -321,29 +360,7 @@ class OfferMessage:
     }
 
     def from_bytes(self, b: bytes):
-        o = 0
-        while o < len(b):
-            tag, lv = decode_varint(b, o); o += lv
-            wire_type = tag & 7
-            field_num = tag >> 3
-            if field_num not in self._map:
-                # Skip unknown fields
-                if wire_type == 0:
-                    _, lv = decode_varint(b, o); o += lv
-                elif wire_type == 2:
-                    flen, lv = decode_varint(b, o); o += lv + flen
-                else:
-                    break
-                continue
-            name, expected_wt = self._map[field_num]
-            if wire_type == 0:
-                val, lv = decode_varint(b, o); o += lv
-            elif wire_type == 2:
-                flen, lv = decode_varint(b, o); o += lv
-                val = b[o:o + flen]; o += flen
-            else:
-                break
-            setattr(self, name, val)
+        _parse_protobuf(self, b)
 
 
 class BidMessage:
@@ -358,28 +375,7 @@ class BidMessage:
     }
 
     def from_bytes(self, b: bytes):
-        o = 0
-        while o < len(b):
-            tag, lv = decode_varint(b, o); o += lv
-            wire_type = tag & 7
-            field_num = tag >> 3
-            if field_num not in self._map:
-                if wire_type == 0:
-                    _, lv = decode_varint(b, o); o += lv
-                elif wire_type == 2:
-                    flen, lv = decode_varint(b, o); o += lv + flen
-                else:
-                    break
-                continue
-            name, _ = self._map[field_num]
-            if wire_type == 0:
-                val, lv = decode_varint(b, o); o += lv
-            elif wire_type == 2:
-                flen, lv = decode_varint(b, o); o += lv
-                val = b[o:o + flen]; o += flen
-            else:
-                break
-            setattr(self, name, val)
+        _parse_protobuf(self, b)
 
 
 class OfferRevokeMessage:
@@ -389,28 +385,7 @@ class OfferRevokeMessage:
     _map = {1: ("offer_msg_id", 2), 2: ("signature", 2)}
 
     def from_bytes(self, b: bytes):
-        o = 0
-        while o < len(b):
-            tag, lv = decode_varint(b, o); o += lv
-            wire_type = tag & 7
-            field_num = tag >> 3
-            if field_num not in self._map:
-                if wire_type == 0:
-                    _, lv = decode_varint(b, o); o += lv
-                elif wire_type == 2:
-                    flen, lv = decode_varint(b, o); o += lv + flen
-                else:
-                    break
-                continue
-            name, _ = self._map[field_num]
-            if wire_type == 0:
-                val, lv = decode_varint(b, o); o += lv
-            elif wire_type == 2:
-                flen, lv = decode_varint(b, o); o += lv
-                val = b[o:o + flen]; o += flen
-            else:
-                break
-            setattr(self, name, val)
+        _parse_protobuf(self, b)
 
 
 # ============================================================================
@@ -933,7 +908,10 @@ class BSXOfferListener(P2PInterface):
         offer.from_bytes(msg_data)
         coin_from = getattr(offer, "coin_from", None)
         coin_to = getattr(offer, "coin_to", None)
-        if coin_from is None or coin_to is None:
+        if type(coin_from) is not int or type(coin_to) is not int:
+            # Coin ids are protobuf varints. A length-delimited value here is not a
+            # ticker — publishing it (or its raw bytes) breaks json.dumps.
+            log.warning(f"  drop offer {msg_id[:16]}: coin id is not an integer")
             return False
         ticker_from = COIN_TICKERS.get(coin_from, f"?{coin_from}")
         ticker_to = COIN_TICKERS.get(coin_to, f"?{coin_to}")
