@@ -751,7 +751,7 @@ const SWAP_TAG_TIPS = {
 };
 function tag(label, cls){
   const tip = SWAP_TYPE_DESC[label] || SWAP_TAG_TIPS[label] || '';
-  return `<span class="px-1.5 py-0.5 rounded text-[10px] ${cls}" data-tippy-content="${tip}">${label}</span>`;
+  return `<span class="px-1.5 py-0.5 rounded text-[10px] ${cls}" data-tippy-content="${escAttr(tip)}">${escAttr(label)}</span>`;
 }
 
 // Bid-interest chip: shown when the scraper observed BID messages for this offer.

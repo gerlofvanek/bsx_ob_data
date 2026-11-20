@@ -312,6 +312,45 @@ def test_merge_previous_offers(tmp_path):
     assert listener.stats["offers_merged_from_previous"] == 1
 
 
+def test_merge_previous_offers_drops_bad_ticker(tmp_path):
+    now = int(time.time())
+    prev = {
+        "offers": [
+            {"msg_id": "html-1", "timestamp": now - 60, "time_valid": 3600,
+             "coin_from": '<img src=x onerror=alert("COIN-XSS")>', "coin_to": "XMR"},
+            {"msg_id": "ok-1", "timestamp": now - 60, "time_valid": 3600,
+             "coin_from": "BTC", "coin_to": "XMR"},
+        ]
+    }
+    path = str(tmp_path / "prev.json")
+    with open(path, "w") as f:
+        json.dump(prev, f)
+    listener = fresh_listener()
+    merged = scraper.merge_previous_offers(listener, path)
+    assert merged == 1
+    assert set(listener.offers) == {"ok-1"}
+    book = listener.get_orderbook_dict()
+    assert [o["msg_id"] for o in book["offers"]] == ["ok-1"]
+    json.dumps(book)
+
+
+def test_publish_drops_unlisted_ticker():
+    listener = fresh_listener()
+    now = int(time.time())
+    listener.offers["bad"] = {
+        "msg_id": "bad", "timestamp": now, "time_valid": 3600,
+        "coin_from": "../../etc/passwd", "coin_to": "XMR",
+        "amount_from": 1, "amount_to": 1, "addr_from": "x",
+    }
+    listener.offers["ok"] = {
+        "msg_id": "ok", "timestamp": now, "time_valid": 3600,
+        "coin_from": "BTC", "coin_to": "XMR",
+        "amount_from": 1, "amount_to": 1, "addr_from": "x",
+    }
+    ids = {o["msg_id"] for o in listener.get_orderbook_dict()["offers"]}
+    assert ids == {"ok"}
+
+
 def test_merge_previous_offers_missing_file():
     listener = fresh_listener()
     assert scraper.merge_previous_offers(listener, "/nonexistent/prev.json") == 0

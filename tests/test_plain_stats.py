@@ -21,6 +21,25 @@ def book():
         return json.load(f)
 
 
+def test_pair_file_slug_rejects_path_and_html():
+    assert plain_stats.pair_file_slug("BTC", "XMR") == "BTC-XMR"
+    assert plain_stats.pair_file_slug("?12", "BTC") == "?12-BTC"
+    assert plain_stats.pair_file_slug("../BTC", "XMR") is None
+    assert plain_stats.pair_file_slug('<img src=x>', "XMR") is None
+
+
+def test_feed_xml_escapes_description(monkeypatch):
+    monkeypatch.setattr(
+        plain_stats, "render_now_section",
+        lambda *a, **k: 'see <img src=x> and ]]>',
+    )
+    xml = plain_stats.build_feed_xml({"timestamp": 1, "updated_at": "t"}, [], {})
+    assert "<![CDATA[" not in xml
+    assert "<img" not in xml
+    assert "&lt;img" in xml
+    assert "]]&gt;" in xml
+
+
 def test_build_stats_txt_contains_sections(book):
     offers = plain_stats.live_offers(book)
     text = plain_stats.build_stats_txt(book, offers, {}, [], int(book["timestamp"]))

@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -650,6 +651,16 @@ def render_pair_txt(
     return "\n".join(lines) + "\n"
 
 
+_PAIR_FILE_RE = re.compile(r"^(?:[A-Z][A-Z0-9_]{0,15}|\?[0-9]{1,18})$")
+
+
+def pair_file_slug(base: str, quote: str) -> str | None:
+    """Filename stem for a pair snapshot. Rejects anything that is not a ticker."""
+    if not _PAIR_FILE_RE.fullmatch(str(base)) or not _PAIR_FILE_RE.fullmatch(str(quote)):
+        return None
+    return f"{base}-{quote}"
+
+
 def render_now_section(book: dict, offers: list[dict], prices: dict[str, float], manifest: list[dict], now: int) -> str:
     liq = sum(offer_usd(o, prices) for o in offers)
     pairs = book.get("unique_pairs") or len({pair_key(o["coin_from"], o["coin_to"]) for o in offers if o.get("coin_from")})
@@ -954,7 +965,7 @@ def build_feed_xml(book: dict, offers: list[dict], prices: dict[str, float], sit
       <link>{xml_escape.escape(link)}</link>
       <guid isPermaLink="false">{xml_escape.escape(guid)}</guid>
       <pubDate>{xml_escape.escape(updated)}</pubDate>
-      <description><![CDATA[{desc}]]></description>
+      <description>{xml_escape.escape(desc)}</description>
     </item>
   </channel>
 </rss>
@@ -1139,7 +1150,9 @@ def generate_plain_artifacts(
 
     pairs_dir = os.path.join(out_dir, "pairs")
     for t in top_pairs(offers, prices, TOP_N):
-        slug = t["base"] + "-" + t["quote"]
+        slug = pair_file_slug(t["base"], t["quote"])
+        if not slug:
+            continue
         write_text_atomic(
             os.path.join(pairs_dir, slug + ".txt"),
             render_pair_txt(book, offers, prices, t["base"], t["quote"], now),

@@ -25,6 +25,7 @@ import json
 import logging
 import os
 import random
+import re
 import socket
 import struct
 import sys
@@ -122,6 +123,18 @@ COIN_DECIMALS = {6: 12, 9: 11}
 DEFAULT_DECIMALS = 8
 
 KNOWN_MESSAGE_NETS = ("smsg", "nostr", "simplex")
+
+# Published tickers are either a known coin or "?123" for an unknown integer id.
+# Anything else (HTML, paths, quotes) is not a coin and must not be published.
+_TICKER_RE = re.compile(r"^(?:[A-Z][A-Z0-9_]{0,15}|\?[0-9]{1,18})$")
+
+
+def valid_ticker(value) -> bool:
+    if not isinstance(value, str) or not _TICKER_RE.fullmatch(value):
+        return False
+    if value.startswith("?"):
+        return True
+    return value in COIN_TICKERS.values()
 
 
 # ============================================================================
@@ -915,6 +928,9 @@ class BSXOfferListener(P2PInterface):
             return False
         ticker_from = COIN_TICKERS.get(coin_from, f"?{coin_from}")
         ticker_to = COIN_TICKERS.get(coin_to, f"?{coin_to}")
+        if not valid_ticker(ticker_from) or not valid_ticker(ticker_to):
+            log.warning(f"  drop offer {msg_id[:16]}: coin ticker is not publishable")
+            return False
         amount_from = getattr(offer, "amount_from", 0)
         amount_to = getattr(offer, "amount_to", 0)
         min_bid = getattr(offer, "min_bid_amount", 0)
@@ -1008,6 +1024,8 @@ class BSXOfferListener(P2PInterface):
                     continue
                 revokes_invalid_sig += 1
             if drop_expired and (o.get("timestamp", 0) + o.get("time_valid", 0)) <= now:
+                continue
+            if not valid_ticker(o.get("coin_from")) or not valid_ticker(o.get("coin_to")):
                 continue
             o2 = dict(o)
             o2["message_nets"] = o2.get("message_nets") or ""
@@ -1248,6 +1266,9 @@ def merge_previous_offers(listener, path: str) -> int:
         if legacy_to_canonical_id(mid) in listener.offers:
             continue
         if (o.get("timestamp", 0) + o.get("time_valid", 0)) <= now:
+            continue
+        if not valid_ticker(o.get("coin_from")) or not valid_ticker(o.get("coin_to")):
+            log.warning(f"merge-from skipped {mid[:16]}: coin ticker is not publishable")
             continue
         o = dict(o)
         o.pop("bid_count", None)
